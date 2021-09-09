@@ -1,7 +1,4 @@
-import datetime
-import os
 import unittest
-from io import StringIO
 
 from siobrultech_protocols.gem import packets
 
@@ -34,7 +31,7 @@ class TestPacketFormats(unittest.TestCase):
         try:
             parse_packet("BIN48-NET-TIME_tricky.bin", packets.BIN48_NET)
             self.fail("Should have thrown")
-        except packets.MalformedPacketException as e:
+        except packets.MalformedPacketException:
             pass
 
         check_packet("BIN48-NET-TIME_tricky.bin", packets.BIN48_NET_TIME)
