@@ -9,7 +9,7 @@ class ByteField(object):
     size = 1
 
     def read(self, buffer, offset):
-        return buffer[offset:offset + self.size]
+        return buffer[offset : offset + self.size]
 
 
 class BytesField(object):
@@ -17,7 +17,7 @@ class BytesField(object):
         self.size = size
 
     def read(self, buffer, offset):
-        return buffer[offset:offset + self.size]
+        return buffer[offset : offset + self.size]
 
 
 class NumericField(object):
@@ -50,8 +50,7 @@ class DateTimeField(object):
     size = 6
 
     def read(self, buffer, offset):
-        year, month, day, hour, minute, second = \
-            buffer[offset : offset + self.size]
+        year, month, day, hour, minute, second = buffer[offset : offset + self.size]
         return datetime(2000 + year, month, day, hour, minute, second)
 
 
@@ -67,7 +66,8 @@ class ArrayField(object):
     def read(self, buffer, offset):
         return [
             self.elem_field.read(buffer, offset + i * self.elem_field.size)
-            for i in range(self.num_elems)]
+            for i in range(self.num_elems)
+        ]
 
 
 def hi_to_lo(octets, signed=False):
@@ -99,11 +99,13 @@ def lo_to_hi(octets, signed=False):
     from how such values are described in the packet format spec."""
     return hi_to_lo(reversed(octets), signed)
 
+
 def hi_to_lo_signed(octets):
     """Reads the given octets as a signed big-endian value. The function
     name comes from how such values are described in the packet format
     spec."""
     return hi_to_lo(octets, True)
+
 
 def lo_to_hi_signed(octets):
     """Reads the given octets as a signed little-endian value. The

@@ -1,12 +1,11 @@
-import logging
-
 import asyncio
+import logging
 
 from .packets import *
 
 LOG = logging.getLogger(__name__)
 
-PACKET_HEADER = bytes.fromhex('feff')
+PACKET_HEADER = bytes.fromhex("feff")
 
 
 class PacketAccumulator(object):
@@ -20,16 +19,18 @@ class PacketAccumulator(object):
 
     def try_get_packet(self):
         while len(self._buffer) > 0:
+
             def skip_malformed_packet(msg, *args, **kwargs):
                 LOG.debug(
-                    'Skipping malformed packet due to ' + msg + '. Buffer contents: %s',
-                    *args, self._buffer)
-                del self._buffer[0:len(PACKET_HEADER)]
+                    "Skipping malformed packet due to " + msg + ". Buffer contents: %s",
+                    *args,
+                    self._buffer
+                )
+                del self._buffer[0 : len(PACKET_HEADER)]
 
             header_index = self._buffer.find(PACKET_HEADER)
             if header_index == -1:
-                LOG.debug(
-                    'No header found. Discarding junk data: %s', self._buffer)
+                LOG.debug("No header found. Discarding junk data: %s", self._buffer)
                 self._buffer.clear()
                 continue
             del self._buffer[0:header_index]
@@ -37,8 +38,10 @@ class PacketAccumulator(object):
             if len(self._buffer) < len(PACKET_HEADER) + 1:
                 # Not enough length yet
                 LOG.debug(
-                    'Not enough data in buffer yet ({} bytes): {}'.format(
-                        len(self._buffer), self._buffer))
+                    "Not enough data in buffer yet ({} bytes): {}".format(
+                        len(self._buffer), self._buffer
+                    )
+                )
                 return None
 
             format_code = self._buffer[len(PACKET_HEADER)]
@@ -51,13 +54,14 @@ class PacketAccumulator(object):
             elif format_code == 5:
                 packet_format = BIN48_NET
             else:
-                skip_malformed_packet('unknown format code 0x%x', format_code)
+                skip_malformed_packet("unknown format code 0x%x", format_code)
                 continue
 
             if len(self._buffer) < packet_format.size:
                 # Not enough length yet
-                LOG.debug('Not enough data in buffer yet ({} bytes)'.format(
-                    len(self._buffer)))
+                LOG.debug(
+                    "Not enough data in buffer yet ({} bytes)".format(len(self._buffer))
+                )
                 return None
 
             try:
@@ -72,15 +76,16 @@ class PacketAccumulator(object):
                     if len(self._buffer) < BIN48_NET_TIME.size:
                         # Not enough length yet
                         LOG.debug(
-                            'Not enough data in buffer yet ({} bytes)'.format(
-                                len(self._buffer)))
+                            "Not enough data in buffer yet ({} bytes)".format(
+                                len(self._buffer)
+                            )
+                        )
                         return None
 
                     result = BIN48_NET_TIME.parse(self._buffer)
 
-                LOG.debug(
-                    'Parsed one {} packet.'.format(result.packet_format.name))
-                del self._buffer[0:result.packet_format.size]
+                LOG.debug("Parsed one {} packet.".format(result.packet_format.name))
+                del self._buffer[0 : result.packet_format.size]
                 return result
             except MalformedPacketException as e:
                 skip_malformed_packet(e.args[0])
@@ -99,19 +104,17 @@ class PacketProtocol(asyncio.Protocol):
 
     def connection_lost(self, exc):
         if exc is not None:
-            LOG.warning(
-                "Connection lost from {}: {}".format(self._peername, exc))
+            LOG.warning("Connection lost from {}: {}".format(self._peername, exc))
         else:
             LOG.info("Connection closed from {}".format(self._peername))
         self._accumulator = None
 
     def data_received(self, data):
-        LOG.debug(
-            'Received {} bytes from {}'.format(len(data), self._peername))
+        LOG.debug("Received {} bytes from {}".format(len(data), self._peername))
         self._accumulator.put_bytes(data)
 
         packet = self._accumulator.try_get_packet()
         while packet is not None:
-            LOG.debug('Parsed 1 packet from {}'.format(self._peername))
+            LOG.debug("Parsed 1 packet from {}".format(self._peername))
             asyncio.ensure_future(asyncio.coroutine(self._listener)(packet))
             packet = self._accumulator.try_get_packet()
