@@ -1,6 +1,6 @@
 {
     "include": [
-        "siobrultech-protocols",
+        "siobrultech_protocols",
         "scripts",
         "tests"
     ],
