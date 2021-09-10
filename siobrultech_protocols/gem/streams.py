@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from typing import Optional
 
 from .packets import *
 
@@ -17,7 +18,7 @@ class PacketAccumulator(object):
     def put_bytes(self, chunk: bytes):
         self._buffer.extend(chunk)
 
-    def try_get_packet(self):
+    def try_get_packet(self) -> Optional[Packet]:
         while len(self._buffer) > 0:
 
             def skip_malformed_packet(msg, *args, **kwargs):
@@ -94,10 +95,10 @@ class PacketAccumulator(object):
 class PacketProtocol(asyncio.Protocol):
     def __init__(self, listener):
         self._listener = listener
-        self._peername = None
-        self._accumulator = None
+        self._peername: Optional[str] = None
+        self._accumulator: Optional[PacketAccumulator] = None
 
-    def connection_made(self, transport):
+    def connection_made(self, transport: asyncio.BaseTransport):
         self._peername = transport.get_extra_info("peername")
         LOG.info("Connection from {}".format(self._peername))
         self._accumulator = PacketAccumulator()
@@ -109,8 +110,9 @@ class PacketProtocol(asyncio.Protocol):
             LOG.info("Connection closed from {}".format(self._peername))
         self._accumulator = None
 
-    def data_received(self, data):
+    def data_received(self, data: bytes):
         LOG.debug("Received {} bytes from {}".format(len(data), self._peername))
+        assert self._accumulator
         self._accumulator.put_bytes(data)
 
         packet = self._accumulator.try_get_packet()
