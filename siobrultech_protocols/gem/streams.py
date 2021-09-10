@@ -9,16 +9,29 @@ LOG = logging.getLogger(__name__)
 PACKET_HEADER = bytes.fromhex("feff")
 
 
-class PacketAccumulator(object):
-    """Searches for packets in accumulated data."""
-
+class PacketProtocol(asyncio.Protocol):
     def __init__(self):
         self._buffer = bytearray()
+        self._transport: Optional[asyncio.BaseTransport] = None
 
-    def put_bytes(self, chunk: bytes):
-        self._buffer.extend(chunk)
+    def connection_made(self, transport: asyncio.BaseTransport):
+        self._transport = transport
 
-    def try_get_packet(self) -> Optional[Packet]:
+    def connection_lost(self, exc):
+        if exc is not None:
+            LOG.warning("Connection lost: {}".format(exc))
+        else:
+            LOG.info("Connection closed")
+        self._transport = None
+
+    def data_received(self, data: bytes):
+        LOG.debug("Received {} bytes".format(len(data)))
+        self._buffer.extend(data)
+
+    def get_packet(self) -> Optional[Packet]:
+        """
+        Returns a full packet if available.
+        """
         while len(self._buffer) > 0:
 
             def skip_malformed_packet(msg, *args, **kwargs):
@@ -91,32 +104,5 @@ class PacketAccumulator(object):
             except MalformedPacketException as e:
                 skip_malformed_packet(e.args[0])
 
-
-class PacketProtocol(asyncio.Protocol):
-    def __init__(self, listener):
-        self._listener = listener
-        self._peername: Optional[str] = None
-        self._accumulator: Optional[PacketAccumulator] = None
-
-    def connection_made(self, transport: asyncio.BaseTransport):
-        self._peername = transport.get_extra_info("peername")
-        LOG.info("Connection from {}".format(self._peername))
-        self._accumulator = PacketAccumulator()
-
-    def connection_lost(self, exc):
-        if exc is not None:
-            LOG.warning("Connection lost from {}: {}".format(self._peername, exc))
-        else:
-            LOG.info("Connection closed from {}".format(self._peername))
-        self._accumulator = None
-
-    def data_received(self, data: bytes):
-        LOG.debug("Received {} bytes from {}".format(len(data), self._peername))
-        assert self._accumulator
-        self._accumulator.put_bytes(data)
-
-        packet = self._accumulator.try_get_packet()
-        while packet is not None:
-            LOG.debug("Parsed 1 packet from {}".format(self._peername))
-            asyncio.ensure_future(asyncio.coroutine(self._listener)(packet))
-            packet = self._accumulator.try_get_packet()
+        if not self._transport:
+            raise EOFError

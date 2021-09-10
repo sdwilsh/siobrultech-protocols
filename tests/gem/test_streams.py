@@ -2,8 +2,8 @@ import logging
 import sys
 import unittest
 
-from siobrultech_protocols.gem import streams
 from siobrultech_protocols.gem.packets import *
+from siobrultech_protocols.gem.streams import PacketProtocol
 
 from tests.gem.packet_test_data import assert_packet, read_packet, read_packets
 
@@ -17,79 +17,79 @@ logging.basicConfig(
 class TestPacketAccumulator(unittest.TestCase):
     def test_single_packet(self):
         packet_data = read_packet("BIN32-ABS.bin")
-        accumulator = streams.PacketAccumulator()
-        accumulator.put_bytes(packet_data)
-        packet = accumulator.try_get_packet()
+        protocol = PacketProtocol()
+        protocol.data_received(packet_data)
+        packet = protocol.get_packet()
         assert_packet("BIN32-ABS.bin", packet)
 
     def test_header_only(self):
         packet_data = read_packet("BIN32-ABS.bin")
-        accumulator = streams.PacketAccumulator()
-        accumulator.put_bytes(packet_data[:2])
-        packet = accumulator.try_get_packet()
+        protocol = PacketProtocol()
+        protocol.data_received(packet_data[:2])
+        packet = protocol.get_packet()
         self.assertIsNone(packet)
-        accumulator.put_bytes(packet_data[2:])
-        packet = accumulator.try_get_packet()
+        protocol.data_received(packet_data[2:])
+        packet = protocol.get_packet()
         assert_packet("BIN32-ABS.bin", packet)
 
     def test_partial_packet(self):
         packet_data = read_packet("BIN32-ABS.bin")
-        accumulator = streams.PacketAccumulator()
-        accumulator.put_bytes(packet_data[:100])
-        packet = accumulator.try_get_packet()
+        protocol = PacketProtocol()
+        protocol.data_received(packet_data[:100])
+        packet = protocol.get_packet()
         self.assertIsNone(packet)
-        accumulator.put_bytes(packet_data[100:])
-        packet = accumulator.try_get_packet()
+        protocol.data_received(packet_data[100:])
+        packet = protocol.get_packet()
         assert_packet("BIN32-ABS.bin", packet)
 
     def test_time_packet(self):
         packet_data = read_packet("BIN48-NET-TIME_tricky.bin")
-        accumulator = streams.PacketAccumulator()
-        accumulator.put_bytes(packet_data)
-        packet = accumulator.try_get_packet()
+        protocol = PacketProtocol()
+        protocol.data_received(packet_data)
+        packet = protocol.get_packet()
         assert_packet("BIN48-NET-TIME_tricky.bin", packet)
 
     def test_partial_time_packet(self):
         packet_data = read_packet("BIN48-NET-TIME_tricky.bin")
-        accumulator = streams.PacketAccumulator()
-        accumulator.put_bytes(packet_data[: BIN48_NET.size])
-        packet = accumulator.try_get_packet()
+        protocol = PacketProtocol()
+        protocol.data_received(packet_data[: BIN48_NET.size])
+        packet = protocol.get_packet()
         self.assertIsNone(packet)
-        accumulator.put_bytes(packet_data[BIN48_NET.size :])
-        packet = accumulator.try_get_packet()
+        protocol.data_received(packet_data[BIN48_NET.size :])
+        packet = protocol.get_packet()
         assert_packet("BIN48-NET-TIME_tricky.bin", packet)
 
     def test_multiple_packets(self):
         packet_data = read_packets(
             ["BIN32-ABS.bin", "BIN32-NET.bin", "BIN48-NET.bin", "BIN48-NET-TIME.bin"]
         )
-        accumulator = streams.PacketAccumulator()
-        accumulator.put_bytes(packet_data)
-        packet = accumulator.try_get_packet()
+        protocol = PacketProtocol()
+        protocol.data_received(packet_data)
+        packet = protocol.get_packet()
         assert_packet("BIN32-ABS.bin", packet)
-        packet = accumulator.try_get_packet()
+        packet = protocol.get_packet()
         assert_packet("BIN32-NET.bin", packet)
-        packet = accumulator.try_get_packet()
+        packet = protocol.get_packet()
         assert_packet("BIN48-NET.bin", packet)
-        packet = accumulator.try_get_packet()
+        packet = protocol.get_packet()
         assert_packet("BIN48-NET-TIME.bin", packet)
 
     def test_multiple_packets_with_junk(self):
-        accumulator = streams.PacketAccumulator()
-        accumulator.put_bytes(read_packet("BIN32-ABS.bin"))
-        accumulator.put_bytes(bytes.fromhex("feff05"))
-        accumulator.put_bytes(read_packet("BIN32-NET.bin"))
-        accumulator.put_bytes(bytes.fromhex("feff01"))
-        accumulator.put_bytes(read_packet("BIN48-NET.bin"))
-        accumulator.put_bytes(bytes.fromhex("23413081afb134870dacea"))
-        accumulator.put_bytes(read_packet("BIN48-NET-TIME.bin"))
-        packet = accumulator.try_get_packet()
+        protocol = PacketProtocol()
+        protocol.data_received(read_packet("BIN32-ABS.bin"))
+        protocol.data_received(bytes.fromhex("feff05"))
+        protocol.data_received(read_packet("BIN32-NET.bin"))
+        protocol.data_received(bytes.fromhex("feff01"))
+        protocol.data_received(read_packet("BIN48-NET.bin"))
+        protocol.data_received(bytes.fromhex("23413081afb134870dacea"))
+        protocol.data_received(read_packet("BIN48-NET-TIME.bin"))
+        packet = protocol.get_packet()
         assert_packet("BIN32-ABS.bin", packet)
-        packet = accumulator.try_get_packet()
+        packet = protocol.get_packet()
         assert_packet("BIN32-NET.bin", packet)
-        packet = accumulator.try_get_packet()
+        packet = protocol.get_packet()
         assert_packet("BIN48-NET.bin", packet)
-        packet = accumulator.try_get_packet()
+        packet = protocol.get_packet()
         assert_packet("BIN48-NET-TIME.bin", packet)
 
 
