@@ -4,7 +4,6 @@ import unittest
 
 from siobrultech_protocols.gem.packets import *
 from siobrultech_protocols.gem.protocol import PacketProtocol
-
 from tests.gem.packet_test_data import assert_packet, read_packet, read_packets
 
 logging.basicConfig(
