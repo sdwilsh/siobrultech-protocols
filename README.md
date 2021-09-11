@@ -9,10 +9,10 @@ This library is a collection of protcols that decode various packet formats from
 # What is Sans-I/O?
 
 Sans-I/O is a philosophy for developing protocol processing libraries in which
-the library does not do any I/O.  Instead, a user of the library is responsible
+the library does not do any I/O. Instead, a user of the library is responsible
 for transferring blocks of bytes between the socket or pipe and the protocol
 library, and for receiving application-level protocol items from and sending
-them to the library.  This obviously makes a sans-I/O library a little more
+them to the library. This obviously makes a sans-I/O library a little more
 difficult to use, but comes with the advantage that the same library can be
 used with any I/O and concurrency mechanism: the same library should be usable
 in a single-request-at-a-time server, a process-per-request or
@@ -31,9 +31,9 @@ pip install siobrultech-protocols
 ## Usage
 
 ```python
-import siobrultech-protocols
-
+from siobrultech_protocols.gem.protocols import PacketProtocol
 ```
+
 ## Development
 
 ### Setup
