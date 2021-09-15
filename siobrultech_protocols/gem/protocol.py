@@ -18,8 +18,9 @@ PACKET_HEADER = bytes.fromhex("feff")
 
 
 class PacketProtocol(asyncio.Protocol):
-    def __init__(self):
+    def __init__(self, queue: asyncio.Queue):
         self._buffer = bytearray()
+        self._queue = queue
         self._transport: Optional[asyncio.BaseTransport] = None
 
     def connection_made(self, transport: asyncio.BaseTransport):
@@ -35,8 +36,15 @@ class PacketProtocol(asyncio.Protocol):
     def data_received(self, data: bytes):
         LOG.debug("Received {} bytes".format(len(data)))
         self._buffer.extend(data)
+        try:
+            packet = self._get_packet()
+            while packet is not None:
+                self._queue.put_nowait(packet)
+                packet = self._get_packet()
+        except Exception as e:
+            LOG.exception("Exception while attempting to parse a packet.", e)
 
-    def get_packet(self) -> Optional[Packet]:
+    def _get_packet(self) -> Optional[Packet]:
         """
         Returns a full packet if available.
         """
