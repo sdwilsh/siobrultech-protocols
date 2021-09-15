@@ -2,7 +2,15 @@ import asyncio
 import logging
 from typing import Optional
 
-from .packets import *
+from .packets import (
+    BIN32_ABS,
+    BIN32_NET,
+    BIN48_ABS,
+    BIN48_NET,
+    BIN48_NET_TIME,
+    MalformedPacketException,
+    Packet,
+)
 
 LOG = logging.getLogger(__name__)
 
