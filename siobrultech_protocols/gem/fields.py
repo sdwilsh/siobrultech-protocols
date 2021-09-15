@@ -70,10 +70,10 @@ class ArrayField(object):
         ]
 
 
-def hi_to_lo(octets, signed=False):
+def hi_to_lo(raw_octets: bytes, signed=False):
     """Reads the given octets as a big-endian value. The function name comes
     from how such values are described in the packet format spec."""
-    octets = list(octets)
+    octets = list(raw_octets)
     if len(octets) == 0:
         return 0
 
@@ -94,20 +94,22 @@ def hi_to_lo(octets, signed=False):
     return sign * result
 
 
-def lo_to_hi(octets, signed=False):
+def lo_to_hi(raw_octets: bytes, signed=False):
     """Reads the given octets as a little-endian value. The function name comes
     from how such values are described in the packet format spec."""
-    return hi_to_lo(reversed(octets), signed)
+    octets = bytearray(raw_octets)
+    octets.reverse()
+    return hi_to_lo(octets, signed)
 
 
-def hi_to_lo_signed(octets):
+def hi_to_lo_signed(octets: bytes):
     """Reads the given octets as a signed big-endian value. The function
     name comes from how such values are described in the packet format
     spec."""
     return hi_to_lo(octets, True)
 
 
-def lo_to_hi_signed(octets):
+def lo_to_hi_signed(octets: bytes):
     """Reads the given octets as a signed little-endian value. The
     function name comes from how such values are described in the
     packet format spec."""
