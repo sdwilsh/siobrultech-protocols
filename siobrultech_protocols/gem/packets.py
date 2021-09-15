@@ -2,11 +2,27 @@
 Packet formats defined in
 https://www.brultech.com/software/files/downloadSoft/GEM-PKT_Packet_Format_2_1.pdf
 """
+from __future__ import annotations
+
 import codecs
 import json
 from collections import OrderedDict
+from datetime import datetime
+from typing import List, Optional
 
-from .fields import *
+from .fields import (
+    ByteField,
+    BytesField,
+    DateTimeField,
+    Field,
+    FloatingPointArrayField,
+    FloatingPointField,
+    NumericArrayField,
+    NumericField,
+    hi_to_lo,
+    lo_to_hi,
+    lo_to_hi_signed,
+)
 
 
 class MalformedPacketException(Exception):
@@ -16,17 +32,17 @@ class MalformedPacketException(Exception):
 class Packet(object):
     def __init__(
         self,
-        packet_format,
-        voltage,
-        absolute_watt_seconds,
-        device_id,
-        serial_number,
-        seconds,
-        pulse_counts,
-        temperatures,
-        polarized_watt_seconds=None,
-        currents=None,
-        time_stamp=None,
+        packet_format: PacketFormat,
+        voltage: float,
+        absolute_watt_seconds: List[int],
+        device_id: int,
+        serial_number: int,
+        seconds: int,
+        pulse_counts: List[int],
+        temperatures: Optional[int],
+        polarized_watt_seconds: Optional[int] = None,
+        currents: Optional[float] = None,
+        time_stamp: Optional[datetime] = None,
         **kwargs
     ):
         self.packet_format = packet_format
@@ -74,54 +90,68 @@ class Packet(object):
 
     @property
     def max_seconds(self):
+        assert isinstance(self.packet_format.fields["seconds"], NumericField)
         return self.packet_format.fields["seconds"].max
 
     @property
     def max_pulse_count(self):
+        assert isinstance(self.packet_format.fields["pulse_counts"], NumericArrayField)
         return self.packet_format.fields["pulse_counts"].elem_field.max
 
     @property
     def max_absolute_watt_seconds(self):
+        assert isinstance(
+            self.packet_format.fields["absolute_watt_seconds"], NumericArrayField
+        )
         return self.packet_format.fields["absolute_watt_seconds"].elem_field.max
 
     @property
     def max_polarized_watt_seconds(self):
+        assert isinstance(
+            self.packet_format.fields["polarized_watt_seconds"], NumericArrayField
+        )
         return self.packet_format.fields["polarized_watt_seconds"].elem_field.max
 
 
 class PacketFormat(object):
-    NUM_PULSE_COUNTERS = 4
-    NUM_TEMPERATURE_SENSORS = 8
+    NUM_PULSE_COUNTERS: int = 4
+    NUM_TEMPERATURE_SENSORS: int = 8
 
     def __init__(
-        self, name, num_channels, has_net_metering=False, has_time_stamp=False
+        self,
+        name: str,
+        num_channels: int,
+        has_net_metering: bool = False,
+        has_time_stamp=False,
     ):
         self.name = name
         self.num_channels = num_channels
-        self.fields = OrderedDict()
+        self.fields: OrderedDict[str, Field] = OrderedDict()
 
         self.fields["header"] = NumericField(3, hi_to_lo)
         self.fields["voltage"] = FloatingPointField(2, hi_to_lo, 10.0)
-        self.fields["absolute_watt_seconds"] = ArrayField(
-            num_channels, NumericField(5, lo_to_hi)
+        self.fields["absolute_watt_seconds"] = NumericArrayField(
+            num_channels, 5, lo_to_hi
         )
         if has_net_metering:
-            self.fields["polarized_watt_seconds"] = ArrayField(
-                num_channels, NumericField(5, lo_to_hi)
+            self.fields["polarized_watt_seconds"] = NumericArrayField(
+                num_channels, 5, lo_to_hi
             )
         self.fields["serial_number"] = NumericField(2, hi_to_lo)
         self.fields["reserved"] = ByteField()
         self.fields["device_id"] = NumericField(1, hi_to_lo)
-        self.fields["currents"] = ArrayField(
-            num_channels, FloatingPointField(2, lo_to_hi, 50.0)
+        self.fields["currents"] = FloatingPointArrayField(
+            num_channels, 2, lo_to_hi, 50.0
         )
         self.fields["seconds"] = NumericField(3, lo_to_hi)
-        self.fields["pulse_counts"] = ArrayField(
-            PacketFormat.NUM_PULSE_COUNTERS, NumericField(3, lo_to_hi)
+        self.fields["pulse_counts"] = NumericArrayField(
+            PacketFormat.NUM_PULSE_COUNTERS, 3, lo_to_hi
         )
-        self.fields["temperatures"] = ArrayField(
+        self.fields["temperatures"] = FloatingPointArrayField(
             PacketFormat.NUM_TEMPERATURE_SENSORS,
-            FloatingPointField(2, lo_to_hi_signed, 2.0),
+            2,
+            lo_to_hi_signed,
+            2.0,
         )
         if num_channels == 32:
             self.fields["spare_bytes"] = BytesField(2)
@@ -138,7 +168,7 @@ class PacketFormat(object):
 
         return result
 
-    def parse(self, packet):
+    def parse(self, packet: bytes) -> Packet:
         if len(packet) < self.size:
             raise MalformedPacketException(
                 "Packet too short. Expected {0} bytes, found {1} bytes.".format(
@@ -158,14 +188,14 @@ class PacketFormat(object):
         if args["footer"] != 0xFFFE:
             raise MalformedPacketException(
                 "bad footer {0} in packet: {1}".format(
-                    hex(args["footer"]), codecs.encode(packet, "hex")
+                    hex(args["footer"]), codecs.encode(packet, "hex")  # type: ignore
                 )
             )
 
-        return Packet(**args)
+        return Packet(**args)  # type: ignore
 
 
-def _checksum(packet, size):
+def _checksum(packet: bytes, size: int):
     checksum = 0
     for i in packet[: size - 1]:
         checksum += i

@@ -1,7 +1,6 @@
 import unittest
 
 from siobrultech_protocols.gem import packets
-
 from tests.gem.packet_test_data import assert_packet, read_packet
 
 
