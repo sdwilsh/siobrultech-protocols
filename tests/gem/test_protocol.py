@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import sys
 import unittest
@@ -14,81 +15,79 @@ logging.basicConfig(
 
 
 class TestPacketAccumulator(unittest.TestCase):
+    def setUp(self):
+        self._queue = asyncio.Queue()
+        self._protocol = PacketProtocol(queue=self._queue)
+        self._protocol.connection_made(asyncio.Transport())
+
     def test_single_packet(self):
         packet_data = read_packet("BIN32-ABS.bin")
-        protocol = PacketProtocol()
-        protocol.data_received(packet_data)
-        packet = protocol.get_packet()
+        self._protocol.data_received(packet_data)
+        packet = self._queue.get_nowait()
         assert_packet("BIN32-ABS.bin", packet)
 
     def test_header_only(self):
         packet_data = read_packet("BIN32-ABS.bin")
-        protocol = PacketProtocol()
-        protocol.data_received(packet_data[:2])
-        packet = protocol.get_packet()
-        self.assertIsNone(packet)
-        protocol.data_received(packet_data[2:])
-        packet = protocol.get_packet()
+        self._protocol.data_received(packet_data[:2])
+        with self.assertRaises(asyncio.queues.QueueEmpty):
+            self._queue.get_nowait()
+        self._protocol.data_received(packet_data[2:])
+        packet = self._queue.get_nowait()
         assert_packet("BIN32-ABS.bin", packet)
 
     def test_partial_packet(self):
         packet_data = read_packet("BIN32-ABS.bin")
-        protocol = PacketProtocol()
-        protocol.data_received(packet_data[:100])
-        packet = protocol.get_packet()
-        self.assertIsNone(packet)
-        protocol.data_received(packet_data[100:])
-        packet = protocol.get_packet()
+        self._protocol.data_received(packet_data[:100])
+        with self.assertRaises(asyncio.queues.QueueEmpty):
+            self._queue.get_nowait()
+        self._protocol.data_received(packet_data[100:])
+        packet = self._queue.get_nowait()
         assert_packet("BIN32-ABS.bin", packet)
 
     def test_time_packet(self):
         packet_data = read_packet("BIN48-NET-TIME_tricky.bin")
-        protocol = PacketProtocol()
-        protocol.data_received(packet_data)
-        packet = protocol.get_packet()
+        self._protocol.data_received(packet_data)
+        packet = self._queue.get_nowait()
         assert_packet("BIN48-NET-TIME_tricky.bin", packet)
 
     def test_partial_time_packet(self):
         packet_data = read_packet("BIN48-NET-TIME_tricky.bin")
-        protocol = PacketProtocol()
-        protocol.data_received(packet_data[: BIN48_NET.size])
-        packet = protocol.get_packet()
-        self.assertIsNone(packet)
-        protocol.data_received(packet_data[BIN48_NET.size :])
-        packet = protocol.get_packet()
+        self._protocol.data_received(packet_data[: BIN48_NET.size])
+        with self.assertRaises(asyncio.queues.QueueEmpty):
+            self._queue.get_nowait()
+        self._protocol.data_received(packet_data[BIN48_NET.size :])
+        packet = self._queue.get_nowait()
         assert_packet("BIN48-NET-TIME_tricky.bin", packet)
 
     def test_multiple_packets(self):
         packet_data = read_packets(
             ["BIN32-ABS.bin", "BIN32-NET.bin", "BIN48-NET.bin", "BIN48-NET-TIME.bin"]
         )
-        protocol = PacketProtocol()
-        protocol.data_received(packet_data)
-        packet = protocol.get_packet()
+        self._protocol.data_received(packet_data)
+        packet = self._queue.get_nowait()
         assert_packet("BIN32-ABS.bin", packet)
-        packet = protocol.get_packet()
+        packet = self._queue.get_nowait()
         assert_packet("BIN32-NET.bin", packet)
-        packet = protocol.get_packet()
+        packet = self._queue.get_nowait()
         assert_packet("BIN48-NET.bin", packet)
-        packet = protocol.get_packet()
+        packet = self._queue.get_nowait()
         assert_packet("BIN48-NET-TIME.bin", packet)
 
     def test_multiple_packets_with_junk(self):
-        protocol = PacketProtocol()
-        protocol.data_received(read_packet("BIN32-ABS.bin"))
-        protocol.data_received(bytes.fromhex("feff05"))
-        protocol.data_received(read_packet("BIN32-NET.bin"))
-        protocol.data_received(bytes.fromhex("feff01"))
-        protocol.data_received(read_packet("BIN48-NET.bin"))
-        protocol.data_received(bytes.fromhex("23413081afb134870dacea"))
-        protocol.data_received(read_packet("BIN48-NET-TIME.bin"))
-        packet = protocol.get_packet()
+        self._protocol.data_received(read_packet("BIN32-ABS.bin"))
+        self._protocol.data_received(bytes.fromhex("feff05"))
+        self._protocol.data_received(read_packet("BIN32-NET.bin"))
+        self._protocol.data_received(bytes.fromhex("feff01"))
+        self._protocol.data_received(read_packet("BIN48-NET.bin"))
+        self._protocol.data_received(bytes.fromhex("23413081afb134870dacea"))
+        self._protocol.data_received(read_packet("BIN48-NET-TIME.bin"))
+        packet = self._queue.get_nowait()
         assert_packet("BIN32-ABS.bin", packet)
-        packet = protocol.get_packet()
+        packet = self._queue.get_nowait()
         assert_packet("BIN32-NET.bin", packet)
-        packet = protocol.get_packet()
+        packet = self._queue.get_nowait()
         assert_packet("BIN48-NET.bin", packet)
-        packet = protocol.get_packet()
+        packet = self._queue.get_nowait()
         assert_packet("BIN48-NET-TIME.bin", packet)
 
 
