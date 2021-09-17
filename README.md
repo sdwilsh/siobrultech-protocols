@@ -31,8 +31,17 @@ pip install siobrultech-protocols
 ## Usage
 
 ```python
+import functools
 from siobrultech_protocols.gem.protocols import PacketProtocol
+
+# Queue to get recieved packets from.
+queue = asyncio.Queue()
+
+# Pass this Protocol to whatever recieves data from the device.
+protocol_factory = functools.partial(PacketProtocol, queue=queue)
 ```
+
+Take a look at some usage examples from [libraries that use this](https://github.com/sdwilsh/siobrultech-protocols/network/dependents).
 
 ## Development
 
