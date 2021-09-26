@@ -40,7 +40,7 @@ class Packet(object):
         seconds: int,
         pulse_counts: List[int],
         temperatures: Optional[int],
-        polarized_watt_seconds: Optional[int] = None,
+        polarized_watt_seconds: Optional[List[int]] = None,
         currents: Optional[float] = None,
         time_stamp: Optional[datetime] = None,
         **kwargs
