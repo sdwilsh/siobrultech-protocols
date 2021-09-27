@@ -1,7 +1,8 @@
 import asyncio
 import logging
-from typing import Optional
+from typing import Callable, NoReturn, Optional
 
+from .api import GemApi
 from .packets import (
     BIN32_ABS,
     BIN32_NET,
@@ -15,16 +16,58 @@ from .packets import (
 LOG = logging.getLogger(__name__)
 
 PACKET_HEADER = bytes.fromhex("feff")
+API_RESPONSE_WAIT_TIME_SECONDS = 3.0  # Time to wait for an API response
+PACKET_DELAY_CLEAR_TIME_SECONDS = 3.0  # Time to wait after a PDL request so that GEM can finish sending any pending packets
 
 
 class PacketProtocol(asyncio.Protocol):
-    def __init__(self, queue: asyncio.Queue):
+    def __init__(
+        self,
+        queue: asyncio.Queue,
+        on_connection_made: Optional[Callable[[GemApi], NoReturn]] = None,
+    ):
         self._buffer = bytearray()
         self._queue = queue
-        self._transport: Optional[asyncio.BaseTransport] = None
+        self._transport: Optional[asyncio.WriteTransport] = None
+        self._api_lock = asyncio.Lock()
+        self._api_mode = False
+        self._on_connection_made = on_connection_made
 
-    def connection_made(self, transport: asyncio.BaseTransport):
+    async def _send_api_command(self, command: str):
+        with await self._api_lock:  # One API call at a time, please
+            if not self._transport:
+                raise EOFError
+
+            # We're about to send a request on the same channel that the GEM is using to
+            # push data packets to us. To minimize confusion, we ask GEM to delay packets
+            # for 15 seconds and give it a few seconds to finish sending any in-progress
+            # packets before sending our request.
+            self._transport.write("^^^SYSPDL".encode())  # Delay packets for 15 seconds
+            await asyncio.sleep(PACKET_DELAY_CLEAR_TIME_SECONDS)
+
+            if not self._transport:
+                raise EOFError
+
+            LOG.debug("Sending API request...")
+            self._api_mode = True
+            self._transport.write(f"^^^{command}".encode())
+
+            # API calls don't provide a nice consistent framing mechanism, but they
+            # are pretty fast. So sleeping a few seconds should generally make sure
+            # that we've got a complete response in the buffer, while also not
+            # being so long that GEM starts sending packets again.
+            await asyncio.sleep(API_RESPONSE_WAIT_TIME_SECONDS)
+
+            result = self._buffer.decode()
+            del self._buffer[:]
+            self._api_mode = False
+            LOG.debug("Handled API response")
+            return result
+
+    def connection_made(self, transport: asyncio.WriteTransport):
         self._transport = transport
+        if self._on_connection_made is not None:
+            self._on_connection_made(GemApi(self._send_api_command))
 
     def connection_lost(self, exc):
         if exc is not None:
@@ -36,13 +79,14 @@ class PacketProtocol(asyncio.Protocol):
     def data_received(self, data: bytes):
         LOG.debug("Received {} bytes".format(len(data)))
         self._buffer.extend(data)
-        try:
-            packet = self._get_packet()
-            while packet is not None:
-                self._queue.put_nowait(packet)
+        if not self._api_mode:
+            try:
                 packet = self._get_packet()
-        except Exception as e:
-            LOG.exception("Exception while attempting to parse a packet.", e)
+                while packet is not None:
+                    self._queue.put_nowait(packet)
+                    packet = self._get_packet()
+            except Exception as e:
+                LOG.exception("Exception while attempting to parse a packet.", e)
 
     def _get_packet(self) -> Optional[Packet]:
         """
@@ -54,7 +98,7 @@ class PacketProtocol(asyncio.Protocol):
                 LOG.debug(
                     "Skipping malformed packet due to " + msg + ". Buffer contents: %s",
                     *args,
-                    self._buffer
+                    self._buffer,
                 )
                 del self._buffer[0 : len(PACKET_HEADER)]
 
