@@ -1,8 +1,8 @@
 import asyncio
 import logging
-from typing import Callable, NoReturn, Optional
+from typing import Callable, Optional
 
-from .api import GemApi
+from .api import DELAY_NEXT_PACKET, GemApi
 from .packets import (
     BIN32_ABS,
     BIN32_NET,
@@ -17,14 +17,14 @@ LOG = logging.getLogger(__name__)
 
 PACKET_HEADER = bytes.fromhex("feff")
 API_RESPONSE_WAIT_TIME_SECONDS = 3.0  # Time to wait for an API response
-PACKET_DELAY_CLEAR_TIME_SECONDS = 3.0  # Time to wait after a PDL request so that GEM can finish sending any pending packets
+PACKET_DELAY_CLEAR_TIME_SECONDS = 3.0  # Time to wait after a packet delay request so that GEM can finish sending any pending packets
 
 
 class PacketProtocol(asyncio.Protocol):
     def __init__(
         self,
         queue: asyncio.Queue,
-        on_connection_made: Optional[Callable[[GemApi], NoReturn]] = None,
+        on_connection_made: Optional[Callable[[GemApi], None]] = None,
     ):
         self._buffer = bytearray()
         self._queue = queue
@@ -34,15 +34,18 @@ class PacketProtocol(asyncio.Protocol):
         self._on_connection_made = on_connection_made
 
     async def _send_api_command(self, command: str):
-        with await self._api_lock:  # One API call at a time, please
+        async with self._api_lock:  # One API call at a time, please
             if not self._transport:
                 raise EOFError
 
             # We're about to send a request on the same channel that the GEM is using to
-            # push data packets to us. To minimize confusion, we ask GEM to delay packets
+            # push data packets to us. To minimize confusion, we ask the GEM to delay packets
             # for 15 seconds and give it a few seconds to finish sending any in-progress
             # packets before sending our request.
-            self._transport.write("^^^SYSPDL".encode())  # Delay packets for 15 seconds
+            LOG.debug("Requesting packet delay...")
+            self._transport.write(
+                DELAY_NEXT_PACKET.encode()
+            )  # Delay packets for 15 seconds
             await asyncio.sleep(PACKET_DELAY_CLEAR_TIME_SECONDS)
 
             if not self._transport:
@@ -50,7 +53,7 @@ class PacketProtocol(asyncio.Protocol):
 
             LOG.debug("Sending API request...")
             self._api_mode = True
-            self._transport.write(f"^^^{command}".encode())
+            self._transport.write(f"{command}".encode())
 
             # API calls don't provide a nice consistent framing mechanism, but they
             # are pretty fast. So sleeping a few seconds should generally make sure
