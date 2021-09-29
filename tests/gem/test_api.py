@@ -14,12 +14,6 @@ from siobrultech_protocols.gem.protocol import PacketProtocol
 from tests.gem.mock_gem import MockGemProtocol
 from tests.gem.packet_test_data import assert_packet, read_packet
 
-logging.basicConfig(
-    stream=sys.stderr,
-    level=logging.DEBUG,
-    format="%(asctime)s [%(name)s](%(levelname)s) %(message)s",
-)
-
 LOG = logging.getLogger(__name__)
 
 
