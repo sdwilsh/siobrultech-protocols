@@ -2,7 +2,7 @@ import asyncio
 import logging
 from typing import Callable, Optional
 
-from .api import DELAY_NEXT_PACKET, GemApi
+from .api import CMD_DELAY_NEXT_PACKET, GemApi
 from .packets import (
     BIN32_ABS,
     BIN32_NET,
@@ -44,7 +44,7 @@ class PacketProtocol(asyncio.Protocol):
             # packets before sending our request.
             LOG.debug("Requesting packet delay...")
             self._transport.write(
-                DELAY_NEXT_PACKET.encode()
+                CMD_DELAY_NEXT_PACKET.encode()
             )  # Delay packets for 15 seconds
             await asyncio.sleep(PACKET_DELAY_CLEAR_TIME_SECONDS)
 

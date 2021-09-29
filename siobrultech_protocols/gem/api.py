@@ -4,8 +4,8 @@ _ESCAPE_SEQUENCE = "^^^"
 _SYSTEM_PREFIX = _ESCAPE_SEQUENCE + "SYS"
 _REQUEST_PREFIX = _ESCAPE_SEQUENCE + "RQS"
 
-DELAY_NEXT_PACKET = _SYSTEM_PREFIX + "PDL"
-GET_SERIAL_NUMBER = _REQUEST_PREFIX + "SRN"
+CMD_DELAY_NEXT_PACKET = _SYSTEM_PREFIX + "PDL"
+CMD_GET_SERIAL_NUMBER = _REQUEST_PREFIX + "SRN"
 
 
 class GemApi:
@@ -13,4 +13,4 @@ class GemApi:
         self._send_api_command = send_command
 
     async def get_serial_number(self) -> int:
-        return int(await self._send_api_command(GET_SERIAL_NUMBER))
+        return int(await self._send_api_command(CMD_GET_SERIAL_NUMBER))

@@ -5,7 +5,11 @@ import sys
 import unittest
 from typing import Optional
 
-from siobrultech_protocols.gem.api import DELAY_NEXT_PACKET, GET_SERIAL_NUMBER, GemApi
+from siobrultech_protocols.gem.api import (
+    CMD_DELAY_NEXT_PACKET,
+    CMD_GET_SERIAL_NUMBER,
+    GemApi,
+)
 from siobrultech_protocols.gem.protocol import PacketProtocol
 from tests.gem.mock_gem import MockGemProtocol
 from tests.gem.packet_test_data import assert_packet, read_packet
@@ -63,8 +67,10 @@ class TestApi(unittest.IsolatedAsyncioTestCase):
     async def testPacketRacingWithApi(self):
         """Tests that the protocol can handle a packet coming in right after it has
         requested a packet delay from the GEM."""
-        self._gem.expect(DELAY_NEXT_PACKET.encode(), reply=read_packet("BIN32-ABS.bin"))
-        self._gem.expect(GET_SERIAL_NUMBER.encode(), reply=b"1234567")
+        self._gem.expect(
+            CMD_DELAY_NEXT_PACKET.encode(), reply=read_packet("BIN32-ABS.bin")
+        )
+        self._gem.expect(CMD_GET_SERIAL_NUMBER.encode(), reply=b"1234567")
 
         # Should get the serial number correctly
         serial_number = await self._api.get_serial_number()
