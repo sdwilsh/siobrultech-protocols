@@ -11,7 +11,7 @@ from siobrultech_protocols.gem.api import (
     GemApi,
 )
 from siobrultech_protocols.gem.protocol import PacketProtocol
-from tests.gem.mock_gem import MockGemProtocol
+from tests.gem.mock_gem import MockGem
 from tests.gem.packet_test_data import assert_packet, read_packet
 
 LOG = logging.getLogger(__name__)
@@ -42,9 +42,9 @@ class TestApi(unittest.IsolatedAsyncioTestCase):
 
         port = self._server.sockets[0].getsockname()[1]
         self._transport, gem = await loop.create_connection(
-            MockGemProtocol, port=port, family=socket.AF_INET
+            MockGem, port=port, family=socket.AF_INET
         )
-        assert isinstance(gem, MockGemProtocol)
+        assert isinstance(gem, MockGem)
         self._gem = gem
 
         async with api_ready:
@@ -66,14 +66,40 @@ class TestApi(unittest.IsolatedAsyncioTestCase):
         )
         self._gem.expect(CMD_GET_SERIAL_NUMBER.encode(), reply=b"1234567")
 
-        # Should get the serial number correctly
-        serial_number = await self._api.get_serial_number()
-        assert serial_number == 1234567
+        await self.assertSerialNumber(1234567)
+        await self.assertPacket("BIN32-ABS.bin")
 
-        # Should also get the packet
+    async def testApiCallWithPacketInProgress(self):
+        """Tests that the protocol can handle a packet that's partially arrived when it
+        requested a packet delay from the GEM."""
+        packet = read_packet("BIN32-ABS.bin")
+        bytes_sent_before_packet_delay_command = 32
+        self._gem.send(packet[0:bytes_sent_before_packet_delay_command])
+        self._gem.expect(
+            CMD_DELAY_NEXT_PACKET.encode(),
+            reply=packet[bytes_sent_before_packet_delay_command:],
+        )
+        self._gem.expect(CMD_GET_SERIAL_NUMBER.encode(), reply=b"1234567")
+
+        await self.assertSerialNumber(1234567)
+        await self.assertPacket("BIN32-ABS.bin")
+
+    async def testApiCallToIdleGem(self):
+        """Tests that the protocol can handle no packets arriving after it has
+        requested a packet delay from the GEM."""
+        self._gem.expect(CMD_DELAY_NEXT_PACKET.encode(), reply=None)
+        self._gem.expect(CMD_GET_SERIAL_NUMBER.encode(), reply=b"1234567")
+
+        await self.assertSerialNumber(1234567)
+
+    async def assertSerialNumber(self, expected_serial_number: int):
+        serial_number = await self._api.get_serial_number()
+        assert serial_number == expected_serial_number
+
+    async def assertPacket(self, expected_packet: str):
         packet = await self._queue.get()
         self._queue.task_done()
-        assert_packet("BIN32-ABS.bin", packet)
+        assert_packet(expected_packet, packet)
 
 
 if __name__ == "__main__":
