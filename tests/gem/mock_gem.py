@@ -2,6 +2,8 @@ import asyncio
 import logging
 from typing import List, Optional, Tuple
 
+import pytest
+
 LOG = logging.getLogger(__name__)
 
 
@@ -32,7 +34,10 @@ class MockGem(asyncio.Protocol):
                 del self._expects_and_replies[0]
             else:
                 # Should have received the first part of it anyway
-                assert expected.startswith(self._buffer)
+                if not expected.startswith(self._buffer):
+                    pytest.fail(
+                        f"Mock GEM received unexpected data\n\tExpected: {expected}\n\tReceived: {bytes(self._buffer)}\n"
+                    )
 
     def expect(self, received: bytes, reply: Optional[bytes]) -> None:
         self._expects_and_replies.append((received, reply))
