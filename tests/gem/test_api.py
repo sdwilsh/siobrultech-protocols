@@ -8,7 +8,7 @@ from siobrultech_protocols.gem.api import (
     CMD_GET_SERIAL_NUMBER,
     GemApi,
 )
-from siobrultech_protocols.gem.protocol import PacketProtocol
+from siobrultech_protocols.gem.protocol import BidirectionalProtocol
 from tests.gem.mock_gem import MockGem
 from tests.gem.packet_test_data import assert_packet, read_packet
 
@@ -19,10 +19,10 @@ class TestApi(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self._queue = asyncio.Queue()
 
-        # Create a server with the PacketProtocol. This is the code under test.
+        # Create a server with the BidirectionalProtocol. This is the code under test.
         loop = asyncio.get_event_loop()
         self._server = await loop.create_server(
-            lambda: PacketProtocol(self._queue),
+            lambda: BidirectionalProtocol(self._queue),
             port=0,
             family=socket.AF_INET,
         )

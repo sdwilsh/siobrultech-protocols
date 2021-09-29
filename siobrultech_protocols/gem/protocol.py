@@ -21,6 +21,8 @@ PACKET_DELAY_CLEAR_TIME_SECONDS = 3.0  # Time to wait after a packet delay reque
 
 
 class PacketProtocol(asyncio.Protocol):
+    """Protocol implementation for processing a stream of data packets from a GreenEye Monitor."""
+
     def __init__(
         self,
         queue: asyncio.Queue,
@@ -28,47 +30,14 @@ class PacketProtocol(asyncio.Protocol):
         """
         Create a new protocol instance.
 
-        When a new connection is received from a GEM, a `GemApi` instance will be enqueued to
-        `queue` that allows commands to be sent to that GEM. Whenever a data packet is received from
-        the remote GEM, a `Packet` instance will be enqueued to `queue`.
+        Whenever a data packet is received fromthe remote GEM, a `Packet` instance will be enqueued to `queue`.
         """
         self._buffer = bytearray()
         self._queue = queue
         self._transport: Optional[asyncio.WriteTransport] = None
-        self._api_lock = asyncio.Lock()
-        self._api_mode = asyncio.BoundedSemaphore(1)
-
-    async def _send_api_command(self, command: str):
-        async with self._api_lock:  # One API call at a time, please
-            # We're about to send a request on the same channel that the GEM is using to
-            # push data packets to us. To minimize confusion, we ask the GEM to delay packets
-            # for 15 seconds and give it a few seconds to finish sending any in-progress
-            # packets before sending our request.
-            LOG.debug("Requesting packet delay...")
-            self._ensure_transport().write(
-                CMD_DELAY_NEXT_PACKET.encode()
-            )  # Delay packets for 15 seconds
-            await asyncio.sleep(PACKET_DELAY_CLEAR_TIME_SECONDS)
-
-            async with self._api_mode:
-                LOG.debug("Sending API request...")
-                self._ensure_transport().write(f"{command}".encode())
-
-                # API calls don't provide a nice consistent framing mechanism, but they
-                # are pretty fast. So sleeping a few seconds should generally make sure
-                # that we've got a complete response in the buffer, while also not
-                # being so long that GEM starts sending packets again.
-                await asyncio.sleep(API_RESPONSE_WAIT_TIME_SECONDS)
-
-                result = self._buffer.decode()
-                del self._buffer[:]
-                LOG.debug("Handled API response")
-
-            return result
 
     def connection_made(self, transport: asyncio.WriteTransport):
         self._transport = transport
-        self._queue.put_nowait(GemApi(self._send_api_command))
 
     def connection_lost(self, exc):
         if exc is not None:
@@ -80,14 +49,13 @@ class PacketProtocol(asyncio.Protocol):
     def data_received(self, data: bytes):
         LOG.debug("Received {} bytes".format(len(data)))
         self._buffer.extend(data)
-        if not self._in_api_mode():
-            try:
+        try:
+            packet = self._get_packet()
+            while packet is not None:
+                self._queue.put_nowait(packet)
                 packet = self._get_packet()
-                while packet is not None:
-                    self._queue.put_nowait(packet)
-                    packet = self._get_packet()
-            except Exception as e:
-                LOG.exception("Exception while attempting to parse a packet.", e)
+        except Exception as e:
+            LOG.exception("Exception while attempting to parse a packet.", e)
 
     def _get_packet(self) -> Optional[Packet]:
         """
@@ -172,6 +140,61 @@ class PacketProtocol(asyncio.Protocol):
             raise EOFError
 
         return self._transport
+
+
+class BidirectionalProtocol(PacketProtocol):
+    """Protocol implementation for bi-directional communication with a GreenEye Monitor."""
+
+    def __init__(self, queue: asyncio.Queue):
+        """
+        Create a new protocol instance.
+
+        When a new connection is received from a GEM, a `GemApi` instance will be enqueued to
+        `queue` that allows commands to be sent to that GEM. Whenever a data packet is received from
+        the remote GEM, a `Packet` instance will be enqueued to `queue`.
+        """
+        super().__init__(queue)
+        self._api_lock = asyncio.Lock()
+        self._api_mode = asyncio.BoundedSemaphore(1)
+
+    async def _send_api_command(self, command: str):
+        async with self._api_lock:  # One API call at a time, please
+            # We're about to send a request on the same channel that the GEM is using to
+            # push data packets to us. To minimize confusion, we ask the GEM to delay packets
+            # for 15 seconds and give it a few seconds to finish sending any in-progress
+            # packets before sending our request.
+            LOG.debug("Requesting packet delay...")
+            self._ensure_transport().write(
+                CMD_DELAY_NEXT_PACKET.encode()
+            )  # Delay packets for 15 seconds
+            await asyncio.sleep(PACKET_DELAY_CLEAR_TIME_SECONDS)
+
+            async with self._api_mode:
+                LOG.debug("Sending API request...")
+                self._ensure_transport().write(f"{command}".encode())
+
+                # API calls don't provide a nice consistent framing mechanism, but they
+                # are pretty fast. So sleeping a few seconds should generally make sure
+                # that we've got a complete response in the buffer, while also not
+                # being so long that GEM starts sending packets again.
+                await asyncio.sleep(API_RESPONSE_WAIT_TIME_SECONDS)
+
+                result = self._buffer.decode()
+                del self._buffer[:]
+                LOG.debug("Handled API response")
+
+            return result
+
+    def connection_made(self, transport: asyncio.WriteTransport):
+        super().connection_made(transport)
+        self._queue.put_nowait(GemApi(self._send_api_command))
+
+    def data_received(self, data: bytes):
+        if not self._in_api_mode():
+            return super().data_received(data)
+        else:
+            LOG.debug("Received {} bytes".format(len(data)))
+            self._buffer.extend(data)
 
     def _in_api_mode(self) -> bool:
         return self._api_mode.locked()

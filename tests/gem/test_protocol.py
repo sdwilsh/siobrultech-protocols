@@ -3,7 +3,6 @@ import logging
 import sys
 import unittest
 
-from siobrultech_protocols.gem.api import GemApi
 from siobrultech_protocols.gem.packets import BIN48_NET
 from siobrultech_protocols.gem.protocol import PacketProtocol
 from tests.gem.packet_test_data import assert_packet, read_packet, read_packets
@@ -20,10 +19,6 @@ class TestPacketAccumulator(unittest.IsolatedAsyncioTestCase):
         self._queue = asyncio.Queue()
         self._protocol = PacketProtocol(queue=self._queue)
         self._protocol.connection_made(asyncio.Transport())
-
-        # Drop the GemApi since we won't be testing it here
-        api = self._queue.get_nowait()
-        assert isinstance(api, GemApi)
 
     def test_single_packet(self):
         packet_data = read_packet("BIN32-ABS.bin")
