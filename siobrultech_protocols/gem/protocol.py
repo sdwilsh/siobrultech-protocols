@@ -34,9 +34,9 @@ class PacketProtocol(asyncio.Protocol):
         """
         self._buffer = bytearray()
         self._queue = queue
-        self._transport: Optional[asyncio.WriteTransport] = None
+        self._transport: Optional[asyncio.BaseTransport] = None
 
-    def connection_made(self, transport: asyncio.WriteTransport):
+    def connection_made(self, transport: asyncio.BaseTransport):
         self._transport = transport
 
     def connection_lost(self, exc):
@@ -135,7 +135,7 @@ class PacketProtocol(asyncio.Protocol):
 
         self._ensure_transport()
 
-    def _ensure_transport(self) -> asyncio.WriteTransport:
+    def _ensure_transport(self) -> asyncio.BaseTransport:
         if not self._transport:
             raise EOFError
 
@@ -164,14 +164,14 @@ class BidirectionalProtocol(PacketProtocol):
             # for 15 seconds and give it a few seconds to finish sending any in-progress
             # packets before sending our request.
             LOG.debug("Requesting packet delay...")
-            self._ensure_transport().write(
+            self._ensure_write_transport().write(
                 CMD_DELAY_NEXT_PACKET.encode()
             )  # Delay packets for 15 seconds
             await asyncio.sleep(PACKET_DELAY_CLEAR_TIME_SECONDS)
 
             async with self._api_mode:
                 LOG.debug("Sending API request...")
-                self._ensure_transport().write(f"{command}".encode())
+                self._ensure_write_transport().write(f"{command}".encode())
 
                 # API calls don't provide a nice consistent framing mechanism, but they
                 # are pretty fast. So sleeping a few seconds should generally make sure
@@ -195,6 +195,11 @@ class BidirectionalProtocol(PacketProtocol):
         else:
             LOG.debug("Received {} bytes".format(len(data)))
             self._buffer.extend(data)
+
+    def _ensure_write_transport(self) -> asyncio.WriteTransport:
+        transport = self._ensure_transport()
+        assert isinstance(transport, asyncio.WriteTransport)
+        return transport
 
     def _in_api_mode(self) -> bool:
         return self._api_mode.locked()
