@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Callable, Optional
+from typing import Optional
 
 from .api import CMD_DELAY_NEXT_PACKET, GemApi
 from .packets import (
@@ -24,13 +24,18 @@ class PacketProtocol(asyncio.Protocol):
     def __init__(
         self,
         queue: asyncio.Queue,
-        on_connection_made: Optional[Callable[[GemApi], None]] = None,
     ):
+        """
+        Create a new protocol instance.
+
+        When a new connection is received from a GEM, a `GemApi` instance will be enqueued to
+        `queue` that allows commands to be sent to that GEM. Whenever a data packet is received from
+        the remote GEM, a `Packet` instance will be enqueued to `queue`.
+        """
         self._buffer = bytearray()
         self._queue = queue
         self._transport: Optional[asyncio.WriteTransport] = None
         self._api_lock = asyncio.Lock()
-        self._on_connection_made = on_connection_made
         self._api_mode = asyncio.BoundedSemaphore(1)
 
     async def _send_api_command(self, command: str):
@@ -63,8 +68,7 @@ class PacketProtocol(asyncio.Protocol):
 
     def connection_made(self, transport: asyncio.WriteTransport):
         self._transport = transport
-        if self._on_connection_made is not None:
-            self._on_connection_made(GemApi(self._send_api_command))
+        self._queue.put_nowait(GemApi(self._send_api_command))
 
     def connection_lost(self, exc):
         if exc is not None:

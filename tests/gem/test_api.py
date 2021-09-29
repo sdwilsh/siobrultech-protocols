@@ -1,9 +1,7 @@
 import asyncio
 import logging
 import socket
-import sys
 import unittest
-from typing import Optional
 
 from siobrultech_protocols.gem.api import (
     CMD_DELAY_NEXT_PACKET,
@@ -19,27 +17,18 @@ LOG = logging.getLogger(__name__)
 
 class TestApi(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
-        loop = asyncio.get_event_loop()
-        api_ready = asyncio.Condition()
-        api: Optional[GemApi] = None
-
-        async def set_api(value: GemApi):
-            nonlocal api_ready, api
-            async with api_ready:
-                api = value
-                LOG.debug(f"API set {id(api)}")
-                api_ready.notify_all()
-
-        def on_connection_made(api: GemApi):
-            asyncio.ensure_future(set_api(api))
-
         self._queue = asyncio.Queue()
+
+        # Create a server with the PacketProtocol. This is the code under test.
+        loop = asyncio.get_event_loop()
         self._server = await loop.create_server(
-            lambda: PacketProtocol(self._queue, on_connection_made),
+            lambda: PacketProtocol(self._queue),
             port=0,
             family=socket.AF_INET,
         )
 
+        # Connect to the server with a Mock GEM, store that in a field so that
+        # we can use it for testing.
         port = self._server.sockets[0].getsockname()[1]
         self._transport, gem = await loop.create_connection(
             MockGem, port=port, family=socket.AF_INET
@@ -47,10 +36,12 @@ class TestApi(unittest.IsolatedAsyncioTestCase):
         assert isinstance(gem, MockGem)
         self._gem = gem
 
-        async with api_ready:
-            api = await api_ready.wait_for(lambda: api)
-            assert api is not None
-            self._api = api
+        # The connection will cause the protocol to put a GemApi in the queue.
+        # Store that in a field so that we can test it.
+        api = await self._queue.get()
+        self._queue.task_done()
+        assert isinstance(api, GemApi)
+        self._api = api
 
     async def asyncTearDown(self) -> None:
         self._transport.close()
