@@ -30,8 +30,8 @@ class PacketProtocol(asyncio.Protocol):
         self._queue = queue
         self._transport: Optional[asyncio.WriteTransport] = None
         self._api_lock = asyncio.Lock()
-        self._api_mode = False
         self._on_connection_made = on_connection_made
+        self._api_mode = asyncio.BoundedSemaphore(1)
 
     async def _send_api_command(self, command: str):
         async with self._api_lock:  # One API call at a time, please
@@ -45,20 +45,20 @@ class PacketProtocol(asyncio.Protocol):
             )  # Delay packets for 15 seconds
             await asyncio.sleep(PACKET_DELAY_CLEAR_TIME_SECONDS)
 
-            LOG.debug("Sending API request...")
-            self._api_mode = True
-            self._ensure_transport().write(f"{command}".encode())
+            async with self._api_mode:
+                LOG.debug("Sending API request...")
+                self._ensure_transport().write(f"{command}".encode())
 
-            # API calls don't provide a nice consistent framing mechanism, but they
-            # are pretty fast. So sleeping a few seconds should generally make sure
-            # that we've got a complete response in the buffer, while also not
-            # being so long that GEM starts sending packets again.
-            await asyncio.sleep(API_RESPONSE_WAIT_TIME_SECONDS)
+                # API calls don't provide a nice consistent framing mechanism, but they
+                # are pretty fast. So sleeping a few seconds should generally make sure
+                # that we've got a complete response in the buffer, while also not
+                # being so long that GEM starts sending packets again.
+                await asyncio.sleep(API_RESPONSE_WAIT_TIME_SECONDS)
 
-            result = self._buffer.decode()
-            del self._buffer[:]
-            self._api_mode = False
-            LOG.debug("Handled API response")
+                result = self._buffer.decode()
+                del self._buffer[:]
+                LOG.debug("Handled API response")
+
             return result
 
     def connection_made(self, transport: asyncio.WriteTransport):
@@ -76,7 +76,7 @@ class PacketProtocol(asyncio.Protocol):
     def data_received(self, data: bytes):
         LOG.debug("Received {} bytes".format(len(data)))
         self._buffer.extend(data)
-        if not self._api_mode:
+        if not self._in_api_mode():
             try:
                 packet = self._get_packet()
                 while packet is not None:
@@ -168,3 +168,6 @@ class PacketProtocol(asyncio.Protocol):
             raise EOFError
 
         return self._transport
+
+    def _in_api_mode(self) -> bool:
+        return self._api_mode.locked()
