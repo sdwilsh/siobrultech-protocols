@@ -14,7 +14,7 @@ logging.basicConfig(
 )
 
 
-class TestPacketAccumulator(unittest.IsolatedAsyncioTestCase):
+class TestPacketAccumulator(unittest.TestCase):
     def setUp(self):
         self._queue = asyncio.Queue()
         self._protocol = PacketProtocol(queue=self._queue)

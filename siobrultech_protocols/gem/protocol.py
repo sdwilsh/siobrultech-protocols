@@ -1,8 +1,10 @@
 import asyncio
 import logging
-from typing import Optional
+from datetime import timedelta
+from enum import Enum
+from typing import Optional, TypeVar
 
-from .api import CMD_DELAY_NEXT_PACKET, GemApi
+from .const import CMD_DELAY_NEXT_PACKET
 from .packets import (
     BIN32_ABS,
     BIN32_NET,
@@ -16,8 +18,14 @@ from .packets import (
 LOG = logging.getLogger(__name__)
 
 PACKET_HEADER = bytes.fromhex("feff")
-API_RESPONSE_WAIT_TIME_SECONDS = 3.0  # Time to wait for an API response
-PACKET_DELAY_CLEAR_TIME_SECONDS = 3.0  # Time to wait after a packet delay request so that GEM can finish sending any pending packets
+API_RESPONSE_WAIT_TIME = timedelta(seconds=3)  # Time to wait for an API response
+PACKET_DELAY_CLEAR_TIME = timedelta(
+    seconds=3
+)  # Time to wait after a packet delay request so that GEM can finish sending any pending packets
+
+
+T = TypeVar("T")
+R = TypeVar("R")
 
 
 class PacketProtocol(asyncio.Protocol):
@@ -142,64 +150,94 @@ class PacketProtocol(asyncio.Protocol):
         return self._transport
 
 
+class ProtocolState(Enum):
+    RECEIVING_PACKETS = 1  # Receiving packets from the GEM
+    SENT_PACKET_DELAY_REQUEST = 2  #  Sent the packet delay request prior to an API request, waiting for any in-flight packets
+    SENT_API_REQUEST = 3  # Sent an API request, waiting for a response
+    RECEIVED_API_RESPONSE = 4  # Received an API response, waiting for end call
+
+
+class ProtocolStateException(Exception):
+    pass
+
+
 class BidirectionalProtocol(PacketProtocol):
     """Protocol implementation for bi-directional communication with a GreenEye Monitor."""
 
     def __init__(self, queue: asyncio.Queue):
-        """
-        Create a new protocol instance.
-
-        When a new connection is received from a GEM, a `GemApi` instance will be enqueued to
-        `queue` that allows commands to be sent to that GEM. Whenever a data packet is received from
-        the remote GEM, a `Packet` instance will be enqueued to `queue`.
-        """
         super().__init__(queue)
-        self._api_lock = asyncio.Lock()
-        self._api_mode = asyncio.BoundedSemaphore(1)
-
-    async def _send_api_command(self, command: str):
-        async with self._api_lock:  # One API call at a time, please
-            # We're about to send a request on the same channel that the GEM is using to
-            # push data packets to us. To minimize confusion, we ask the GEM to delay packets
-            # for 15 seconds and give it a few seconds to finish sending any in-progress
-            # packets before sending our request.
-            LOG.debug("Requesting packet delay...")
-            self._ensure_write_transport().write(
-                CMD_DELAY_NEXT_PACKET.encode()
-            )  # Delay packets for 15 seconds
-            await asyncio.sleep(PACKET_DELAY_CLEAR_TIME_SECONDS)
-
-            async with self._api_mode:
-                LOG.debug("Sending API request...")
-                self._ensure_write_transport().write(f"{command}".encode())
-
-                # API calls don't provide a nice consistent framing mechanism, but they
-                # are pretty fast. So sleeping a few seconds should generally make sure
-                # that we've got a complete response in the buffer, while also not
-                # being so long that GEM starts sending packets again.
-                await asyncio.sleep(API_RESPONSE_WAIT_TIME_SECONDS)
-
-                result = self._buffer.decode()
-                del self._buffer[:]
-                LOG.debug("Handled API response")
-
-            return result
-
-    def connection_made(self, transport: asyncio.WriteTransport):
-        super().connection_made(transport)
-        self._queue.put_nowait(GemApi(self._send_api_command))
+        self._state = ProtocolState.RECEIVING_PACKETS
+        self._api_buffer = bytearray()
 
     def data_received(self, data: bytes):
-        if not self._in_api_mode():
-            return super().data_received(data)
+        if self._state == ProtocolState.SENT_API_REQUEST:
+            self._api_buffer.extend(data)
         else:
-            LOG.debug("Received {} bytes".format(len(data)))
-            self._buffer.extend(data)
+            super().data_received(data)
+
+    def begin_api_request(self) -> timedelta:
+        """
+        Begin the process of sending an API request.
+
+        Calls WriteTransport.write on the associated transport with bytes that need to be sent.
+
+        Returns a timedelta. Callers must wait for that amount of time, then call send_api_request with the actual request.
+        """
+        self._expect_state(ProtocolState.RECEIVING_PACKETS)
+
+        LOG.debug("Starting API request. Requesting packet delay...")
+        self._ensure_write_transport().write(
+            CMD_DELAY_NEXT_PACKET.encode()
+        )  # Delay packets for 15 seconds
+        self._state = ProtocolState.SENT_PACKET_DELAY_REQUEST
+
+        return PACKET_DELAY_CLEAR_TIME
+
+    def send_api_request(self, request: str) -> timedelta:
+        """
+        Send the given API request, after having called begin_api_request.
+
+        Calls WriteTransport.write on the associated transport with bytes that need to be sent.
+
+        Returns a timedelta. Callers must wait for that amount of time, then call receive_api_response to receive the response.
+        """
+        self._expect_state(ProtocolState.SENT_PACKET_DELAY_REQUEST)
+
+        LOG.debug(f"Sending API request '{request}'...")
+        self._ensure_write_transport().write(request.encode())
+        self._state = ProtocolState.SENT_API_REQUEST
+
+        return API_RESPONSE_WAIT_TIME
+
+    def receive_api_response(self) -> str:
+        """
+        Returns the bytes that were received in response to a call to send_api_request.
+
+        Callers must call end_api_request after this call.
+        """
+        self._expect_state(ProtocolState.SENT_API_REQUEST)
+
+        response = bytes(self._api_buffer).decode()
+        LOG.debug(f"Received API response: '{response}'")
+        self._state = ProtocolState.RECEIVED_API_RESPONSE
+
+        return response
+
+    def end_api_request(self):
+        """
+        Ends an API request. Every begin_api_request call must have a matching end_api_request call,
+        even if an error occurred in between.
+        """
+        self._expect_state(ProtocolState.RECEIVED_API_RESPONSE)
+        self._api_buffer.clear()
+        LOG.debug(f"Ended API request")
+        self._state = ProtocolState.RECEIVING_PACKETS
 
     def _ensure_write_transport(self) -> asyncio.WriteTransport:
         transport = self._ensure_transport()
         assert isinstance(transport, asyncio.WriteTransport)
         return transport
 
-    def _in_api_mode(self) -> bool:
-        return self._api_mode.locked()
+    def _expect_state(self, expected_state: ProtocolState):
+        if self._state != expected_state:
+            raise ProtocolStateException()
