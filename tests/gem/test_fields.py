@@ -1,0 +1,60 @@
+import unittest
+
+from siobrultech_protocols.gem.fields import *
+
+
+class TestFieldParsing(unittest.TestCase):
+    def testByteFieldRead(self):
+        self.assertEqual(b"c", ByteField().read(b"abcdefg", 2))
+
+    def testBytesFieldRead(self):
+        self.assertEqual(b"cdef", BytesField(4).read(b"abcdefg", 2))
+
+    def testNumericFieldHiToLoRead(self):
+        self.assertEqual(1, NumericField(2, hi_to_lo).read(b"\x02\x00\x01", 1))
+
+    def testNumericFieldHiToLoSignedRead(self):
+        self.assertEqual(-1, NumericField(2, hi_to_lo_signed).read(b"\x02\x80\x01", 1))
+
+    def testNumericFieldLoToHiRead(self):
+        self.assertEqual(256, NumericField(2, lo_to_hi).read(b"\x02\x00\x01", 1))
+
+    def testNumericFieldLoToHiSignedRead(self):
+        self.assertEqual(
+            -256, NumericField(2, lo_to_hi_signed).read(b"\x02\x00\x81", 1)
+        )
+
+    def testFloatingPointFieldRead(self):
+        self.assertEqual(
+            0.5, FloatingPointField(2, hi_to_lo, 2.0).read(b"\x02\x00\x01", 1)
+        )
+
+    def testDateTimeFieldRead(self):
+        self.assertEqual(
+            datetime(2020, 1, 1, 0, 0, 0),
+            DateTimeField().read(b"\x02\x14\x01\x01\x00\x00\x00", 1),
+        )
+
+    def testArrayFieldRead(self):
+        self.assertEqual(
+            [1, 2, 3, 4],
+            ArrayField(4, NumericField(2, hi_to_lo)).read(
+                b"\x05\x00\x01\x00\x02\x00\x03\x00\x04", 1
+            ),
+        )
+
+    def testNumericArrayFieldRead(self):
+        self.assertEqual(
+            [1, 2, 3, 4],
+            NumericArrayField(4, 2, hi_to_lo).read(
+                b"\x05\x00\x01\x00\x02\x00\x03\x00\x04", 1
+            ),
+        )
+
+    def testFloatingPointArrayFieldRead(self):
+        self.assertEqual(
+            [0.5, 1.0, 1.5, 2.0],
+            FloatingPointArrayField(4, 2, hi_to_lo, 2.0).read(
+                b"\x05\x00\x01\x00\x02\x00\x03\x00\x04", 1
+            ),
+        )
