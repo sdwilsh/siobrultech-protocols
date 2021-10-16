@@ -103,9 +103,12 @@ class Packet(object):
     def delta_polarized_watt_seconds(self, index: int, prev: int) -> int:
         field = self.packet_format.fields["polarized_watt_seconds"]
         assert isinstance(field, NumericArrayField)
-        return self._delta_value(
-            field.elem_field, self.polarized_watt_seconds[index], prev
-        )
+        if self.polarized_watt_seconds is not None:
+            return self._delta_value(
+                field.elem_field, self.polarized_watt_seconds[index], prev
+            )
+        else:
+            return 0
 
     def _delta_value(self, field: NumericField, cur: int, prev: int) -> int:
         if prev > cur:
