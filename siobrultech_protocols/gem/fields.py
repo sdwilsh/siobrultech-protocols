@@ -64,6 +64,16 @@ class NumericField(Field):
         else:
             return (1 << (bits - 1)) - 1
 
+    @property
+    def min(self) -> int:
+        """The minimum value that can be encoded in this field."""
+        if self.signed == Sign.Unsigned:
+            return 0
+        else:
+            # Because the sign bit is just lopped off in parsing, this behaves differently
+            # than a 2's complement signed integer would
+            return -self.max
+
 
 class FloatingPointField(Field):
     def __init__(self, size: int, order: ByteOrder, signed: Sign, divisor: float):
