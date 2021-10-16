@@ -4,7 +4,20 @@ https://www.brultech.com/software/files/downloadSoft/GEM-PKT_Packet_Format_2_1.p
 """
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, Callable, List
+from enum import Enum
+from typing import Any, List
+
+
+class ByteOrder(Enum):
+    # Big-endian (the name comes from the GEM packet format spec)
+    HiToLo = 1
+    # Little endian (the name comes from the GEM packet format spec)
+    LoToHi = 2
+
+
+class Sign(Enum):
+    Signed = 1
+    Unsigned = 2
 
 
 class Field(ABC):
@@ -34,12 +47,13 @@ class BytesField(Field):
 
 
 class NumericField(Field):
-    def __init__(self, size: int, order_fn: Callable[[bytes], int]):
+    def __init__(self, size: int, order: ByteOrder, signed: Sign):
         super().__init__(size=size)
-        self.order_fn = order_fn
+        self.order = order
+        self.signed = signed
 
     def read(self, buffer: bytes, offset: int) -> int:
-        return self.order_fn(buffer[offset : offset + self.size])
+        return _parse(buffer[offset : offset + self.size], self.order, self.signed)
 
     @property
     def max(self) -> int:
@@ -47,8 +61,8 @@ class NumericField(Field):
 
 
 class FloatingPointField(Field):
-    def __init__(self, size: int, order_fn: Callable[[bytes], int], divisor: float):
-        self.raw_field = NumericField(size, order_fn)
+    def __init__(self, size: int, order: ByteOrder, signed: Sign, divisor: float):
+        self.raw_field = NumericField(size, order, signed)
         super().__init__(size=self.raw_field.size)
         self.divisor = divisor
 
@@ -85,13 +99,14 @@ class FloatingPointArrayField(ArrayField):
         self,
         num_elems: int,
         size: int,
-        order_fn: Callable[[bytes], int],
+        order: ByteOrder,
+        signed: Sign,
         divisor: float,
     ):
         super().__init__(
             num_elems=num_elems,
             elem_field=FloatingPointField(
-                size=size, order_fn=order_fn, divisor=divisor
+                size=size, order=order, signed=signed, divisor=divisor
             ),
         )
 
@@ -102,9 +117,10 @@ class FloatingPointArrayField(ArrayField):
 class NumericArrayField(ArrayField):
     elem_field: NumericField
 
-    def __init__(self, num_elems: int, size: int, order_fn: Callable[[bytes], int]):
+    def __init__(self, num_elems: int, size: int, order: ByteOrder, signed: Sign):
         super().__init__(
-            num_elems=num_elems, elem_field=NumericField(size=size, order_fn=order_fn)
+            num_elems=num_elems,
+            elem_field=NumericField(size=size, order=order, signed=signed),
         )
 
     def read(self, buffer: bytes, offset: int) -> List[int]:
@@ -115,12 +131,16 @@ class NumericArrayField(ArrayField):
         return self.elem_field.max
 
 
-def hi_to_lo(raw_octets: bytes, signed=False):
+def _parse(
+    raw_octets: bytes, order: ByteOrder = ByteOrder.HiToLo, signed=Sign.Unsigned
+) -> int:
     """Reads the given octets as a big-endian value. The function name comes
     from how such values are described in the packet format spec."""
     octets = list(raw_octets)
     if len(octets) == 0:
         return 0
+    if order == ByteOrder.LoToHi:
+        octets.reverse()
 
     # If this is a signed field (i.e., temperature), the highest-order
     # bit indicates sign. Detect this (and clear the bit so we can
@@ -129,7 +149,7 @@ def hi_to_lo(raw_octets: bytes, signed=False):
     # This isn't documented in the protocol spec, but matches other
     # implementations.
     sign = 1
-    if signed and (octets[0] & 0x80):
+    if signed == Sign.Signed and (octets[0] & 0x80):
         octets[0] &= ~0x80
         sign = -1
 
@@ -137,25 +157,3 @@ def hi_to_lo(raw_octets: bytes, signed=False):
     for octet in octets:
         result = (result << 8) + octet
     return sign * result
-
-
-def lo_to_hi(raw_octets: bytes, signed=False):
-    """Reads the given octets as a little-endian value. The function name comes
-    from how such values are described in the packet format spec."""
-    octets = bytearray(raw_octets)
-    octets.reverse()
-    return hi_to_lo(octets, signed)
-
-
-def hi_to_lo_signed(octets: bytes):
-    """Reads the given octets as a signed big-endian value. The function
-    name comes from how such values are described in the packet format
-    spec."""
-    return hi_to_lo(octets, True)
-
-
-def lo_to_hi_signed(octets: bytes):
-    """Reads the given octets as a signed little-endian value. The
-    function name comes from how such values are described in the
-    packet format spec."""
-    return lo_to_hi(octets, True)
