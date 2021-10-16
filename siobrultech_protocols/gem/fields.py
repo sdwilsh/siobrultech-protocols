@@ -49,8 +49,8 @@ class BytesField(Field):
 class NumericField(Field):
     def __init__(self, size: int, order: ByteOrder, signed: Sign):
         super().__init__(size=size)
-        self.order = order
-        self.signed = signed
+        self.order: ByteOrder = order
+        self.signed: Sign = signed
 
     def read(self, buffer: bytes, offset: int) -> int:
         return _parse(buffer[offset : offset + self.size], self.order, self.signed)
@@ -67,9 +67,9 @@ class NumericField(Field):
 
 class FloatingPointField(Field):
     def __init__(self, size: int, order: ByteOrder, signed: Sign, divisor: float):
-        self.raw_field = NumericField(size, order, signed)
+        self.raw_field: NumericField = NumericField(size, order, signed)
         super().__init__(size=self.raw_field.size)
-        self.divisor = divisor
+        self.divisor: float = divisor
 
     def read(self, buffer: bytes, offset: int) -> float:
         return self.raw_field.read(buffer, offset) / self.divisor
@@ -87,8 +87,8 @@ class DateTimeField(Field):
 class ArrayField(Field):
     def __init__(self, num_elems: int, elem_field: Field):
         super().__init__(size=num_elems * elem_field.size)
-        self.elem_field = elem_field
-        self.num_elems = num_elems
+        self.elem_field: Field = elem_field
+        self.num_elems: int = num_elems
 
     def read(self, buffer: bytes, offset: int) -> List[Any]:
         return [
