@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from .packets import (
     BIN32_ABS,
@@ -23,17 +23,17 @@ class PacketProtocol(asyncio.Protocol):
         self._queue = queue
         self._transport: Optional[asyncio.BaseTransport] = None
 
-    def connection_made(self, transport: asyncio.BaseTransport):
+    def connection_made(self, transport: asyncio.BaseTransport) -> None:
         self._transport = transport
 
-    def connection_lost(self, exc):
+    def connection_lost(self, exc: Optional[Any]) -> None:
         if exc is not None:
             LOG.warning("Connection lost: {}".format(exc))
         else:
             LOG.info("Connection closed")
         self._transport = None
 
-    def data_received(self, data: bytes):
+    def data_received(self, data: bytes) -> None:
         LOG.debug("Received {} bytes".format(len(data)))
         self._buffer.extend(data)
         try:

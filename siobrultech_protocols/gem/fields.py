@@ -6,6 +6,8 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any, Callable, List
 
+OrderFn = Callable[[bytes], int]
+
 
 class Field(ABC):
     def __init__(self, size: int):
@@ -34,9 +36,9 @@ class BytesField(Field):
 
 
 class NumericField(Field):
-    def __init__(self, size: int, order_fn: Callable[[bytes], int]):
+    def __init__(self, size: int, order_fn: OrderFn):
         super().__init__(size=size)
-        self.order_fn = order_fn
+        self.order_fn: OrderFn = order_fn
 
     def read(self, buffer: bytes, offset: int) -> int:
         return self.order_fn(buffer[offset : offset + self.size])
@@ -47,10 +49,10 @@ class NumericField(Field):
 
 
 class FloatingPointField(Field):
-    def __init__(self, size: int, order_fn: Callable[[bytes], int], divisor: float):
-        self.raw_field = NumericField(size, order_fn)
+    def __init__(self, size: int, order_fn: OrderFn, divisor: float):
+        self.raw_field: NumericField = NumericField(size, order_fn)
         super().__init__(size=self.raw_field.size)
-        self.divisor = divisor
+        self.divisor: float = divisor
 
     def read(self, buffer: bytes, offset: int) -> float:
         return self.raw_field.read(buffer, offset) / self.divisor
@@ -68,8 +70,8 @@ class DateTimeField(Field):
 class ArrayField(Field):
     def __init__(self, num_elems: int, elem_field: Field):
         super().__init__(size=num_elems * elem_field.size)
-        self.elem_field = elem_field
-        self.num_elems = num_elems
+        self.elem_field: Field = elem_field
+        self.num_elems: int = num_elems
 
     def read(self, buffer: bytes, offset: int) -> List[Any]:
         return [
@@ -85,7 +87,7 @@ class FloatingPointArrayField(ArrayField):
         self,
         num_elems: int,
         size: int,
-        order_fn: Callable[[bytes], int],
+        order_fn: OrderFn,
         divisor: float,
     ):
         super().__init__(
@@ -102,7 +104,7 @@ class FloatingPointArrayField(ArrayField):
 class NumericArrayField(ArrayField):
     elem_field: NumericField
 
-    def __init__(self, num_elems: int, size: int, order_fn: Callable[[bytes], int]):
+    def __init__(self, num_elems: int, size: int, order_fn: OrderFn):
         super().__init__(
             num_elems=num_elems, elem_field=NumericField(size=size, order_fn=order_fn)
         )
@@ -115,7 +117,7 @@ class NumericArrayField(ArrayField):
         return self.elem_field.max
 
 
-def hi_to_lo(raw_octets: bytes, signed=False):
+def hi_to_lo(raw_octets: bytes, signed: bool = False) -> int:
     """Reads the given octets as a big-endian value. The function name comes
     from how such values are described in the packet format spec."""
     octets = list(raw_octets)
@@ -139,7 +141,7 @@ def hi_to_lo(raw_octets: bytes, signed=False):
     return sign * result
 
 
-def lo_to_hi(raw_octets: bytes, signed=False):
+def lo_to_hi(raw_octets: bytes, signed: bool = False) -> int:
     """Reads the given octets as a little-endian value. The function name comes
     from how such values are described in the packet format spec."""
     octets = bytearray(raw_octets)
@@ -147,14 +149,14 @@ def lo_to_hi(raw_octets: bytes, signed=False):
     return hi_to_lo(octets, signed)
 
 
-def hi_to_lo_signed(octets: bytes):
+def hi_to_lo_signed(octets: bytes) -> int:
     """Reads the given octets as a signed big-endian value. The function
     name comes from how such values are described in the packet format
     spec."""
     return hi_to_lo(octets, True)
 
 
-def lo_to_hi_signed(octets: bytes):
+def lo_to_hi_signed(octets: bytes) -> int:
     """Reads the given octets as a signed little-endian value. The
     function name comes from how such values are described in the
     packet format spec."""

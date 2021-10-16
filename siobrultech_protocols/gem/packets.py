@@ -8,7 +8,7 @@ import codecs
 import json
 from collections import OrderedDict
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from .fields import (
     ByteField,
@@ -39,30 +39,28 @@ class Packet(object):
         serial_number: int,
         seconds: int,
         pulse_counts: List[int],
-        temperatures: Optional[int],
+        temperatures: List[float],
         polarized_watt_seconds: Optional[List[int]] = None,
-        currents: Optional[float] = None,
+        currents: Optional[List[float]] = None,
         time_stamp: Optional[datetime] = None,
-        **kwargs
+        **kwargs: Dict[str, Any]
     ):
-        self.packet_format = packet_format
-        self.voltage = voltage
-        self.absolute_watt_seconds = absolute_watt_seconds
-        if polarized_watt_seconds:
-            self.polarized_watt_seconds = polarized_watt_seconds
-        if currents:
-            self.currents = currents
-        self.device_id = device_id
-        self.serial_number = serial_number
-        self.seconds = seconds
-        self.pulse_counts = pulse_counts
-        self.temperatures = temperatures
+        self.packet_format: PacketFormat = packet_format
+        self.voltage: float = voltage
+        self.absolute_watt_seconds: List[int] = absolute_watt_seconds
+        self.polarized_watt_seconds: Optional[List[int]] = polarized_watt_seconds
+        self.currents: Optional[List[float]] = currents
+        self.device_id: int = device_id
+        self.serial_number: int = serial_number
+        self.seconds: int = seconds
+        self.pulse_counts: List[int] = pulse_counts
+        self.temperatures: List[float] = temperatures
         if time_stamp:
-            self.time_stamp = time_stamp
+            self.time_stamp: datetime = time_stamp
         else:
-            self.time_stamp = datetime.now()
+            self.time_stamp: datetime = datetime.now()
 
-    def __str__(self):
+    def __str__(self) -> str:
         return json.dumps(
             {
                 "device_id": self.device_id,
@@ -70,10 +68,8 @@ class Packet(object):
                 "seconds": self.seconds,
                 "voltage": self.voltage,
                 "absolute_watt_seconds": self.absolute_watt_seconds,
-                "polarized_watt_seconds": self.polarized_watt_seconds
-                if hasattr(self, "polarized_watt_seconds")
-                else None,
-                "currents": self.currents if hasattr(self, "currents") else None,
+                "polarized_watt_seconds": self.polarized_watt_seconds,
+                "currents": self.currents,
                 "pulse_counts": self.pulse_counts,
                 "temperatures": self.temperatures,
                 "time_stamp": self.time_stamp.isoformat(),
@@ -81,32 +77,32 @@ class Packet(object):
         )
 
     @property
-    def type(self):
+    def type(self) -> str:
         return self.packet_format.name
 
     @property
-    def num_channels(self):
+    def num_channels(self) -> int:
         return self.packet_format.num_channels
 
     @property
-    def max_seconds(self):
+    def max_seconds(self) -> int:
         assert isinstance(self.packet_format.fields["seconds"], NumericField)
         return self.packet_format.fields["seconds"].max
 
     @property
-    def max_pulse_count(self):
+    def max_pulse_count(self) -> int:
         assert isinstance(self.packet_format.fields["pulse_counts"], NumericArrayField)
         return self.packet_format.fields["pulse_counts"].elem_field.max
 
     @property
-    def max_absolute_watt_seconds(self):
+    def max_absolute_watt_seconds(self) -> int:
         assert isinstance(
             self.packet_format.fields["absolute_watt_seconds"], NumericArrayField
         )
         return self.packet_format.fields["absolute_watt_seconds"].elem_field.max
 
     @property
-    def max_polarized_watt_seconds(self):
+    def max_polarized_watt_seconds(self) -> int:
         assert isinstance(
             self.packet_format.fields["polarized_watt_seconds"], NumericArrayField
         )
@@ -122,10 +118,10 @@ class PacketFormat(object):
         name: str,
         num_channels: int,
         has_net_metering: bool = False,
-        has_time_stamp=False,
+        has_time_stamp: bool = False,
     ):
-        self.name = name
-        self.num_channels = num_channels
+        self.name: str = name
+        self.num_channels: int = num_channels
         self.fields: OrderedDict[str, Field] = OrderedDict()
 
         self.fields["header"] = NumericField(3, hi_to_lo)
@@ -161,7 +157,7 @@ class PacketFormat(object):
         self.fields["checksum"] = ByteField()
 
     @property
-    def size(self):
+    def size(self) -> int:
         result = 0
         for value in self.fields.values():
             result += value.size
