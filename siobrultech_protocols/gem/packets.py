@@ -87,29 +87,37 @@ class Packet(object):
     def num_channels(self):
         return self.packet_format.num_channels
 
-    @property
-    def max_seconds(self):
-        assert isinstance(self.packet_format.fields["seconds"], NumericField)
-        return self.packet_format.fields["seconds"].max
+    def delta_seconds(self, prev: int) -> int:
+        field = self.packet_format.fields["seconds"]
+        assert isinstance(field, NumericField)
+        return self._delta_value(field, self.seconds, prev)
 
-    @property
-    def max_pulse_count(self):
-        assert isinstance(self.packet_format.fields["pulse_counts"], NumericArrayField)
-        return self.packet_format.fields["pulse_counts"].elem_field.max
+    def delta_pulse_count(self, index: int, prev: int) -> int:
+        field = self.packet_format.fields["pulse_counts"]
+        assert isinstance(field, NumericArrayField)
+        return self._delta_value(field.elem_field, self.pulse_counts[index], prev)
 
-    @property
-    def max_absolute_watt_seconds(self):
-        assert isinstance(
-            self.packet_format.fields["absolute_watt_seconds"], NumericArrayField
+    def delta_absolute_watt_seconds(self, index: int, prev: int) -> int:
+        field = self.packet_format.fields["absolute_watt_seconds"]
+        assert isinstance(field, NumericArrayField)
+        return self._delta_value(
+            field.elem_field, self.absolute_watt_seconds[index], prev
         )
-        return self.packet_format.fields["absolute_watt_seconds"].elem_field.max
 
-    @property
-    def max_polarized_watt_seconds(self):
-        assert isinstance(
-            self.packet_format.fields["polarized_watt_seconds"], NumericArrayField
+    def delta_polarized_watt_seconds(self, index: int, prev: int) -> int:
+        field = self.packet_format.fields["polarized_watt_seconds"]
+        assert isinstance(field, NumericArrayField)
+        return self._delta_value(
+            field.elem_field, self.polarized_watt_seconds[index], prev
         )
-        return self.packet_format.fields["polarized_watt_seconds"].elem_field.max
+
+    def _delta_value(self, field: NumericField, cur: int, prev: int) -> int:
+        if prev > cur:
+            diff = field.max + 1 - prev
+            diff += cur
+        else:
+            diff = cur - prev
+        return diff
 
 
 class PacketFormat(object):

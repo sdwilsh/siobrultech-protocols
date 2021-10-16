@@ -46,20 +46,6 @@ class TestFieldParsing(unittest.TestCase):
             field.max,
         )
 
-    def testNumericFieldUnsignedMin(self):
-        field = NumericField(2, ByteOrder.HiToLo, Sign.Unsigned)
-        self.assertEqual(
-            0,
-            field.min,
-        )
-
-    def testNumericFieldSignedMin(self):
-        field = NumericField(2, ByteOrder.HiToLo, Sign.Signed)
-        self.assertEqual(
-            field.read(b"\xff\xff", 0),
-            field.min,
-        )
-
     def testFloatingPointFieldRead(self):
         self.assertEqual(
             0.5,
