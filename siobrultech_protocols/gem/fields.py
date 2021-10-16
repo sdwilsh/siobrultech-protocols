@@ -57,7 +57,12 @@ class NumericField(Field):
 
     @property
     def max(self) -> int:
-        return 2 ** self.size
+        """The maximum value that can be encoded in this field."""
+        bits = 8 * self.size
+        if self.signed == Sign.Unsigned:
+            return (1 << bits) - 1
+        else:
+            return (1 << (bits - 1)) - 1
 
 
 class FloatingPointField(Field):

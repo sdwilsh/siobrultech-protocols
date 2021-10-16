@@ -32,6 +32,20 @@ class TestFieldParsing(unittest.TestCase):
             NumericField(2, ByteOrder.LoToHi, Sign.Signed).read(b"\x02\x00\x81", 1),
         )
 
+    def testNumericFieldUnsignedMax(self):
+        field = NumericField(2, ByteOrder.HiToLo, Sign.Unsigned)
+        self.assertEqual(
+            field.read(b"\xff\xff", 0),
+            field.max,
+        )
+
+    def testNumericFieldSignedMax(self):
+        field = NumericField(2, ByteOrder.HiToLo, Sign.Signed)
+        self.assertEqual(
+            field.read(b"\x7f\xff", 0),
+            field.max,
+        )
+
     def testFloatingPointFieldRead(self):
         self.assertEqual(
             0.5,
