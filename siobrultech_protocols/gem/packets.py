@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from .fields import (
     ByteField,
+    ByteOrder,
     BytesField,
     DateTimeField,
     Field,
@@ -19,9 +20,7 @@ from .fields import (
     FloatingPointField,
     NumericArrayField,
     NumericField,
-    hi_to_lo,
-    lo_to_hi,
-    lo_to_hi_signed,
+    Sign,
 )
 
 
@@ -84,29 +83,40 @@ class Packet(object):
     def num_channels(self) -> int:
         return self.packet_format.num_channels
 
-    @property
-    def max_seconds(self) -> int:
-        assert isinstance(self.packet_format.fields["seconds"], NumericField)
-        return self.packet_format.fields["seconds"].max
+    def delta_seconds(self, prev: int) -> int:
+        field = self.packet_format.fields["seconds"]
+        assert isinstance(field, NumericField)
+        return self._delta_value(field, self.seconds, prev)
 
-    @property
-    def max_pulse_count(self) -> int:
-        assert isinstance(self.packet_format.fields["pulse_counts"], NumericArrayField)
-        return self.packet_format.fields["pulse_counts"].elem_field.max
+    def delta_pulse_count(self, index: int, prev: int) -> int:
+        field = self.packet_format.fields["pulse_counts"]
+        assert isinstance(field, NumericArrayField)
+        return self._delta_value(field.elem_field, self.pulse_counts[index], prev)
 
-    @property
-    def max_absolute_watt_seconds(self) -> int:
-        assert isinstance(
-            self.packet_format.fields["absolute_watt_seconds"], NumericArrayField
+    def delta_absolute_watt_seconds(self, index: int, prev: int) -> int:
+        field = self.packet_format.fields["absolute_watt_seconds"]
+        assert isinstance(field, NumericArrayField)
+        return self._delta_value(
+            field.elem_field, self.absolute_watt_seconds[index], prev
         )
-        return self.packet_format.fields["absolute_watt_seconds"].elem_field.max
 
-    @property
-    def max_polarized_watt_seconds(self) -> int:
-        assert isinstance(
-            self.packet_format.fields["polarized_watt_seconds"], NumericArrayField
-        )
-        return self.packet_format.fields["polarized_watt_seconds"].elem_field.max
+    def delta_polarized_watt_seconds(self, index: int, prev: int) -> int:
+        field = self.packet_format.fields["polarized_watt_seconds"]
+        assert isinstance(field, NumericArrayField)
+        if self.polarized_watt_seconds is not None:
+            return self._delta_value(
+                field.elem_field, self.polarized_watt_seconds[index], prev
+            )
+        else:
+            return 0
+
+    def _delta_value(self, field: NumericField, cur: int, prev: int) -> int:
+        if prev > cur:
+            diff = field.max + 1 - prev
+            diff += cur
+        else:
+            diff = cur - prev
+        return diff
 
 
 class PacketFormat(object):
@@ -124,36 +134,39 @@ class PacketFormat(object):
         self.num_channels: int = num_channels
         self.fields: OrderedDict[str, Field] = OrderedDict()
 
-        self.fields["header"] = NumericField(3, hi_to_lo)
-        self.fields["voltage"] = FloatingPointField(2, hi_to_lo, 10.0)
+        self.fields["header"] = NumericField(3, ByteOrder.HiToLo, Sign.Unsigned)
+        self.fields["voltage"] = FloatingPointField(
+            2, ByteOrder.HiToLo, Sign.Unsigned, 10.0
+        )
         self.fields["absolute_watt_seconds"] = NumericArrayField(
-            num_channels, 5, lo_to_hi
+            num_channels, 5, ByteOrder.LoToHi, Sign.Unsigned
         )
         if has_net_metering:
             self.fields["polarized_watt_seconds"] = NumericArrayField(
-                num_channels, 5, lo_to_hi
+                num_channels, 5, ByteOrder.LoToHi, Sign.Unsigned
             )
-        self.fields["serial_number"] = NumericField(2, hi_to_lo)
+        self.fields["serial_number"] = NumericField(2, ByteOrder.HiToLo, Sign.Unsigned)
         self.fields["reserved"] = ByteField()
-        self.fields["device_id"] = NumericField(1, hi_to_lo)
+        self.fields["device_id"] = NumericField(1, ByteOrder.HiToLo, Sign.Unsigned)
         self.fields["currents"] = FloatingPointArrayField(
-            num_channels, 2, lo_to_hi, 50.0
+            num_channels, 2, ByteOrder.LoToHi, Sign.Unsigned, 50.0
         )
-        self.fields["seconds"] = NumericField(3, lo_to_hi)
+        self.fields["seconds"] = NumericField(3, ByteOrder.LoToHi, Sign.Unsigned)
         self.fields["pulse_counts"] = NumericArrayField(
-            PacketFormat.NUM_PULSE_COUNTERS, 3, lo_to_hi
+            PacketFormat.NUM_PULSE_COUNTERS, 3, ByteOrder.LoToHi, Sign.Unsigned
         )
         self.fields["temperatures"] = FloatingPointArrayField(
             PacketFormat.NUM_TEMPERATURE_SENSORS,
             2,
-            lo_to_hi_signed,
+            ByteOrder.LoToHi,
+            Sign.Signed,
             2.0,
         )
         if num_channels == 32:
             self.fields["spare_bytes"] = BytesField(2)
         if has_time_stamp:
             self.fields["time_stamp"] = DateTimeField()
-        self.fields["footer"] = NumericField(2, hi_to_lo)
+        self.fields["footer"] = NumericField(2, ByteOrder.HiToLo, Sign.Unsigned)
         self.fields["checksum"] = ByteField()
 
     @property
