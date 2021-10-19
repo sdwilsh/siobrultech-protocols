@@ -4,10 +4,11 @@ https://www.brultech.com/software/files/downloadSoft/GEM-PKT_Packet_Format_2_1.p
 """
 from abc import ABC, abstractmethod
 from datetime import datetime
-from enum import Enum
+from enum import Enum, unique
 from typing import Any, List
 
 
+@unique
 class ByteOrder(Enum):
     # Big-endian (the name comes from the GEM packet format spec)
     HiToLo = 1
@@ -15,6 +16,7 @@ class ByteOrder(Enum):
     LoToHi = 2
 
 
+@unique
 class Sign(Enum):
     Signed = 1
     Unsigned = 2

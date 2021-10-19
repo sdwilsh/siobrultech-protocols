@@ -128,7 +128,9 @@ class TestPacketDeltaComputation(unittest.TestCase):
         packet = parse_packet("BIN32-NET.bin", packets.BIN32_NET)
 
         # Packet didn't have any negative numbers, so let's do some manual ones
-        packet.polarized_watt_seconds = [-1600 + 100 * i for i in range(0, 32)]
+        packet.polarized_watt_seconds = [
+            -1600 + 100 * i for i in range(0, packet.num_channels)
+        ]
 
         self.assertEqual(
             [
