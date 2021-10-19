@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 from typing import Any, Optional
@@ -18,7 +20,7 @@ PACKET_HEADER = bytes.fromhex("feff")
 
 
 class PacketProtocol(asyncio.Protocol):
-    def __init__(self, queue: asyncio.Queue):
+    def __init__(self, queue: asyncio.Queue[Packet]):
         self._buffer = bytearray()
         self._queue = queue
         self._transport: Optional[asyncio.BaseTransport] = None
@@ -50,7 +52,7 @@ class PacketProtocol(asyncio.Protocol):
         """
         while len(self._buffer) > 0:
 
-            def skip_malformed_packet(msg, *args, **kwargs):
+            def skip_malformed_packet(msg: str, *args: Any, **kwargs: Any):
                 LOG.debug(
                     "Skipping malformed packet due to " + msg + ". Buffer contents: %s",
                     *args,
