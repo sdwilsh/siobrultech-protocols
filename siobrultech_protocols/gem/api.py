@@ -45,5 +45,6 @@ class ApiCall(Generic[T, R]):
 
 
 GET_SERIAL_NUMBER = ApiCall[None, int](
-    formatter=lambda _: CMD_GET_SERIAL_NUMBER, parser=lambda response: int(response)
+    formatter=lambda _: CMD_GET_SERIAL_NUMBER,
+    parser=lambda response: int(response),
 )

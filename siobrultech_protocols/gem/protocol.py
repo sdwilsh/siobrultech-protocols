@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import timedelta
-from enum import Enum
+from enum import Enum, unique
 from typing import Any, Optional, TypeVar
 
 from .const import CMD_DELAY_NEXT_PACKET
@@ -38,7 +38,7 @@ class PacketProtocol(asyncio.Protocol):
         """
         Create a new protocol instance.
 
-        Whenever a data packet is received fromthe remote GEM, a `Packet` instance will be enqueued to `queue`.
+        Whenever a data packet is received from the GEM, a `Packet` instance will be enqueued to `queue`.
         """
         self._buffer = bytearray()
         self._queue = queue
@@ -150,6 +150,7 @@ class PacketProtocol(asyncio.Protocol):
         return self._transport
 
 
+@unique
 class ProtocolState(Enum):
     RECEIVING_PACKETS = 1  # Receiving packets from the GEM
     SENT_PACKET_DELAY_REQUEST = 2  #  Sent the packet delay request prior to an API request, waiting for any in-flight packets
@@ -169,7 +170,7 @@ class BidirectionalProtocol(PacketProtocol):
         self._state = ProtocolState.RECEIVING_PACKETS
         self._api_buffer = bytearray()
 
-    def data_received(self, data: bytes):
+    def data_received(self, data: bytes) -> None:
         if self._state == ProtocolState.SENT_API_REQUEST:
             self._api_buffer.extend(data)
         else:
@@ -223,7 +224,7 @@ class BidirectionalProtocol(PacketProtocol):
 
         return response
 
-    def end_api_request(self):
+    def end_api_request(self) -> None:
         """
         Ends an API request. Every begin_api_request call must have a matching end_api_request call,
         even if an error occurred in between.
