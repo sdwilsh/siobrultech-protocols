@@ -3,6 +3,7 @@ import unittest
 from typing import TypeVar
 
 from siobrultech_protocols.gem.api import GET_SERIAL_NUMBER, ApiCall
+from siobrultech_protocols.gem.packets import Packet
 from siobrultech_protocols.gem.protocol import (
     API_RESPONSE_WAIT_TIME,
     BidirectionalProtocol,
@@ -15,7 +16,7 @@ R = TypeVar("R")
 
 class TestApi(unittest.TestCase):
     def setUp(self):
-        self._queue = asyncio.Queue()
+        self._queue: asyncio.Queue[Packet] = asyncio.Queue()
         self._transport = MockTransport()
         self._protocol = BidirectionalProtocol(self._queue)
         self._protocol.connection_made(self._transport)

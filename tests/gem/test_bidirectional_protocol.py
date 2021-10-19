@@ -2,6 +2,7 @@ import asyncio
 import unittest
 
 from siobrultech_protocols.gem.const import CMD_DELAY_NEXT_PACKET
+from siobrultech_protocols.gem.packets import Packet
 from siobrultech_protocols.gem.protocol import (
     BidirectionalProtocol,
     ProtocolStateException,
@@ -12,7 +13,7 @@ from tests.gem.packet_test_data import assert_packet, read_packet
 
 class TestBidirectionalProtocol(unittest.TestCase):
     def setUp(self):
-        self._queue = asyncio.Queue()
+        self._queue: asyncio.Queue[Packet] = asyncio.Queue()
         self._transport = MockTransport()
         self._protocol = BidirectionalProtocol(self._queue)
         self._protocol.connection_made(self._transport)
