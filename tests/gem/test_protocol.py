@@ -3,7 +3,7 @@ import logging
 import sys
 import unittest
 
-from siobrultech_protocols.gem.packets import BIN48_NET
+from siobrultech_protocols.gem.packets import BIN48_NET, Packet
 from siobrultech_protocols.gem.protocol import PacketProtocol
 from tests.gem.packet_test_data import assert_packet, read_packet, read_packets
 
@@ -16,7 +16,7 @@ logging.basicConfig(
 
 class TestPacketAccumulator(unittest.TestCase):
     def setUp(self):
-        self._queue = asyncio.Queue()
+        self._queue: asyncio.Queue[Packet] = asyncio.Queue()
         self._protocol = PacketProtocol(queue=self._queue)
         self._protocol.connection_made(asyncio.Transport())
 

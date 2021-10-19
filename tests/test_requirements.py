@@ -29,7 +29,7 @@ class TestRequirements(unittest.TestCase):
     def _get_pre_commit_config_data(self) -> List[Tuple[str, List[Tuple[str, str]]]]:
         with open(PRE_COMMIT_CONFIG_FILE, "r") as config:
             repos_config = yaml.full_load(config)["repos"]
-            r = []
+            r: List[Tuple[str, List[Tuple[str, str]]]] = []
             for repo in repos_config:
                 for hook in repo["hooks"]:
                     if hook["language_version"] != "python3":
