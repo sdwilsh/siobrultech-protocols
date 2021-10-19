@@ -144,13 +144,13 @@ class TestPacketDeltaComputation(unittest.TestCase):
         )
 
 
-def check_packet(packet_file_name, packet_format):
+def check_packet(packet_file_name: str, packet_format: packets.PacketFormat):
     packet = parse_packet(packet_file_name, packet_format)
 
     assert_packet(packet_file_name, packet)
 
 
-def parse_packet(packet_file_name, packet_format):
+def parse_packet(packet_file_name: str, packet_format: packets.PacketFormat):
     return packet_format.parse(read_packet(packet_file_name))
 
 

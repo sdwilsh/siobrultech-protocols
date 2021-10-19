@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 from datetime import timedelta
@@ -33,7 +35,7 @@ class PacketProtocol(asyncio.Protocol):
 
     def __init__(
         self,
-        queue: asyncio.Queue,
+        queue: asyncio.Queue[Packet],
     ):
         """
         Create a new protocol instance.
@@ -71,7 +73,7 @@ class PacketProtocol(asyncio.Protocol):
         """
         while len(self._buffer) > 0:
 
-            def skip_malformed_packet(msg, *args, **kwargs):
+            def skip_malformed_packet(msg: str, *args: Any, **kwargs: Any):
                 LOG.debug(
                     "Skipping malformed packet due to " + msg + ". Buffer contents: %s",
                     *args,
@@ -165,7 +167,7 @@ class ProtocolStateException(Exception):
 class BidirectionalProtocol(PacketProtocol):
     """Protocol implementation for bi-directional communication with a GreenEye Monitor."""
 
-    def __init__(self, queue: asyncio.Queue):
+    def __init__(self, queue: asyncio.Queue[Packet]):
         super().__init__(queue)
         self._state = ProtocolState.RECEIVING_PACKETS
         self._api_buffer = bytearray()

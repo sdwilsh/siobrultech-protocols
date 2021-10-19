@@ -139,7 +139,7 @@ class NumericArrayField(ArrayField):
 
 
 def _parse(
-    raw_octets: bytes, order: ByteOrder = ByteOrder.HiToLo, signed=Sign.Unsigned
+    raw_octets: bytes, order: ByteOrder = ByteOrder.HiToLo, signed: Sign = Sign.Unsigned
 ) -> int:
     """Reads the given octets as a big-endian value. The function name comes
     from how such values are described in the packet format spec."""
