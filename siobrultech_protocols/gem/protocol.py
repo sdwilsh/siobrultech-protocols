@@ -167,7 +167,7 @@ class ProtocolStateException(Exception):
 class BidirectionalProtocol(PacketProtocol):
     """Protocol implementation for bi-directional communication with a GreenEye Monitor."""
 
-    def __init__(self, queue: asyncio.Queue[Packet]):
+    def __init__(self, queue: asyncio.Queue):
         super().__init__(queue)
         self._state = ProtocolState.RECEIVING_PACKETS
         self._api_buffer = bytearray()
