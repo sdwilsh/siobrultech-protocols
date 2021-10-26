@@ -73,6 +73,12 @@ class TestBidirectionalProtocol(unittest.TestCase):
         self.assertEqual(response, "RESPONSE")
         self.assertNoPacket()
 
+    def testEndAfterBegin(self):
+        """Checks for the case where user-code may fail, and we just call end_api_request
+        after calling begin_api_request."""
+        self._protocol.begin_api_request()
+        self._protocol.end_api_request()
+
     def assertNoPacket(self):
         self.assertTrue(self._queue.empty())
 
