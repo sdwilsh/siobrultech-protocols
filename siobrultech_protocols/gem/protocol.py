@@ -161,7 +161,17 @@ class ProtocolState(Enum):
 
 
 class ProtocolStateException(Exception):
-    pass
+    def __init__(
+        self, actual: ProtocolState, expected: ProtocolState, *args: object
+    ) -> None:
+        self._actual = actual
+        self._expected = expected
+        super().__init__(*args)
+
+    def __str__(self) -> str:
+        return (
+            f"Expected state to be {self._expected.name}, but got {self._actual.name}!"
+        )
 
 
 class BidirectionalProtocol(PacketProtocol):
@@ -243,4 +253,4 @@ class BidirectionalProtocol(PacketProtocol):
 
     def _expect_state(self, expected_state: ProtocolState):
         if self._state != expected_state:
-            raise ProtocolStateException()
+            raise ProtocolStateException(actual=self._state, expected=expected_state)
