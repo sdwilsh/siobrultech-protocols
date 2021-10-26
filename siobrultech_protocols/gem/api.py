@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from datetime import timedelta
-from types import TracebackType
-from typing import Callable, Coroutine, Generic, Optional, Type, TypeVar
+from typing import Any, AsyncIterator, Callable, Coroutine, Generic, TypeVar
 
 from .const import CMD_GET_SERIAL_NUMBER
 from .protocol import BidirectionalProtocol
@@ -48,37 +48,22 @@ class ApiCall(Generic[T, R]):
         return self._parse_response(protocol.receive_api_response())
 
 
-class ApiCallContextManager(Generic[T, R]):
-    def __init__(self, api: ApiCall[T, R], protocol: BidirectionalProtocol):
-        self._api = api
-        self._protocol = protocol
-
-    async def __call__(self, arg: T) -> R:
-        delay = self._api.send_request(self._protocol, arg)
+@asynccontextmanager
+async def call_api(
+    api: ApiCall[T, R], protocol: BidirectionalProtocol
+) -> AsyncIterator[Callable[[T], Coroutine[Any, None, R]]]:
+    async def send(arg: T) -> R:
+        delay = api.send_request(protocol, arg)
         await asyncio.sleep(delay.seconds)
 
-        return self._api.receive_response(self._protocol)
+        return api.receive_response(protocol)
 
-    async def __aenter__(self) -> ApiCallContextManager[T, R]:
-        delay = self._protocol.begin_api_request()
-        try:
-            await asyncio.sleep(delay.seconds)
-        except Exception as ex:
-            self._protocol.end_api_request()
-            raise ex.with_traceback(ex.__traceback__)
-
-        return self
-
-    async def __aexit__(
-        self,
-        exc_type: Optional[Type[BaseException]],
-        exc: Optional[BaseException],
-        exc_traceback: Optional[TracebackType],
-    ):
-        self._protocol.end_api_request()
-
-
-call_api = ApiCallContextManager
+    delay = protocol.begin_api_request()
+    try:
+        await asyncio.sleep(delay.seconds)
+        yield send
+    finally:
+        protocol.end_api_request()
 
 
 GET_SERIAL_NUMBER = ApiCall[None, int](
