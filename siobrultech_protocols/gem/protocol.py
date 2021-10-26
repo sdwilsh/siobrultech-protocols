@@ -4,7 +4,7 @@ import asyncio
 import logging
 from datetime import timedelta
 from enum import Enum, unique
-from typing import Any, Optional, TypeVar
+from typing import Any, Optional, Set, TypeVar, Union
 
 from .const import CMD_DELAY_NEXT_PACKET
 from .packets import (
@@ -162,16 +162,25 @@ class ProtocolState(Enum):
 
 class ProtocolStateException(Exception):
     def __init__(
-        self, actual: ProtocolState, expected: ProtocolState, *args: object
+        self,
+        actual: ProtocolState,
+        expected: Union[ProtocolState, Set[ProtocolState]],
+        *args: object,
     ) -> None:
         self._actual = actual
         self._expected = expected
         super().__init__(*args)
 
     def __str__(self) -> str:
-        return (
-            f"Expected state to be {self._expected.name}, but got {self._actual.name}!"
-        )
+        if isinstance(self._expected, set):
+            expected = [s.name for s in self._expected]
+            if len(expected) > 1:
+                expected_str = ", ".join(expected[:-1]) + f", or {expected[-1]}"
+            else:
+                expected_str = expected[0]
+        else:
+            expected_str = self._expected.name
+        return f"Expected state to be {expected_str}; but got {self._actual.name}!"
 
 
 class BidirectionalProtocol(PacketProtocol):
@@ -241,7 +250,12 @@ class BidirectionalProtocol(PacketProtocol):
         Ends an API request. Every begin_api_request call must have a matching end_api_request call,
         even if an error occurred in between.
         """
-        self._expect_state(ProtocolState.RECEIVED_API_RESPONSE)
+        self._expect_state(
+            {
+                ProtocolState.RECEIVED_API_RESPONSE,
+                ProtocolState.SENT_PACKET_DELAY_REQUEST,
+            }
+        )
         self._api_buffer.clear()
         LOG.debug(f"Ended API request")
         self._state = ProtocolState.RECEIVING_PACKETS
@@ -251,6 +265,9 @@ class BidirectionalProtocol(PacketProtocol):
         assert isinstance(transport, asyncio.WriteTransport)
         return transport
 
-    def _expect_state(self, expected_state: ProtocolState):
-        if self._state != expected_state:
+    def _expect_state(self, expected_state: Union[ProtocolState, Set[ProtocolState]]):
+        if not isinstance(expected_state, set):
+            expected_state = {expected_state}
+        assert len(expected_state) > 0
+        if not self._state in expected_state:
             raise ProtocolStateException(actual=self._state, expected=expected_state)
