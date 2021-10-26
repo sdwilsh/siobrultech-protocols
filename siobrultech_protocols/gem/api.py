@@ -1,5 +1,9 @@
+from __future__ import annotations
+
+import asyncio
 from datetime import timedelta
-from typing import Callable, Generic, TypeVar
+from types import TracebackType
+from typing import Callable, Coroutine, Generic, Optional, Type, TypeVar
 
 from .const import CMD_GET_SERIAL_NUMBER
 from .protocol import BidirectionalProtocol
@@ -42,6 +46,39 @@ class ApiCall(Generic[T, R]):
         Returns the API call response, parsed into an appropriate Python type.
         """
         return self._parse_response(protocol.receive_api_response())
+
+
+class ApiCallContextManager(Generic[T, R]):
+    def __init__(self, api: ApiCall[T, R], protocol: BidirectionalProtocol):
+        self._api = api
+        self._protocol = protocol
+
+    async def __call__(self, arg: T) -> R:
+        delay = self._api.send_request(self._protocol, arg)
+        await asyncio.sleep(delay.seconds)
+
+        return self._api.receive_response(self._protocol)
+
+    async def __aenter__(self) -> ApiCallContextManager[T, R]:
+        delay = self._protocol.begin_api_request()
+        try:
+            await asyncio.sleep(delay.seconds)
+        except Exception as ex:
+            self._protocol.end_api_request()
+            raise ex.with_traceback(ex.__traceback__)
+
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc: Optional[BaseException],
+        exc_traceback: Optional[TracebackType],
+    ):
+        self._protocol.end_api_request()
+
+
+call_api = ApiCallContextManager
 
 
 GET_SERIAL_NUMBER = ApiCall[None, int](
