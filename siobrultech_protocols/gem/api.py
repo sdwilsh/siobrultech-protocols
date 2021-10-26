@@ -70,3 +70,8 @@ GET_SERIAL_NUMBER = ApiCall[None, int](
     formatter=lambda _: CMD_GET_SERIAL_NUMBER,
     parser=lambda response: int(response),
 )
+
+
+async def get_serial_number(protocol: BidirectionalProtocol) -> int:
+    async with call_api(GET_SERIAL_NUMBER, protocol) as f:
+        return await f(None)
