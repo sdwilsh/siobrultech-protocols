@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any, AsyncIterator, Callable, Coroutine, Generic, TypeVar
 
-from .const import CMD_GET_SERIAL_NUMBER
-from .protocol import BidirectionalProtocol
+from .const import CMD_GET_SERIAL_NUMBER, CMD_SET_DATE_AND_TIME
+from .protocol import PACKET_DELAY_CLEAR_TIME, BidirectionalProtocol
 
 T = TypeVar("T")
 R = TypeVar("R")
@@ -75,3 +75,23 @@ GET_SERIAL_NUMBER = ApiCall[None, int](
 async def get_serial_number(protocol: BidirectionalProtocol) -> int:
     async with call_api(GET_SERIAL_NUMBER, protocol) as f:
         return await f(None)
+
+
+SET_DATE_AND_TIME = ApiCall[datetime, bool](
+    formatter=lambda dt: f"{CMD_SET_DATE_AND_TIME}{dt.strftime('%y,%m,%d,%H,%M,%S')}",
+    parser=lambda response: response == "DTM",
+)
+
+
+async def set_date_and_time(protocol: BidirectionalProtocol, time: datetime) -> bool:
+    async with call_api(SET_DATE_AND_TIME, protocol) as f:
+        return await f(time)
+
+
+async def synchronize_time(protocol: BidirectionalProtocol) -> bool:
+    """
+    Synchronizes the clock on the device to the time on the local device, accounting for the
+    time waited for packets to clear.
+    """
+    time = datetime.now() + PACKET_DELAY_CLEAR_TIME
+    return await set_date_and_time(protocol, time)
