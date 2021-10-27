@@ -88,7 +88,7 @@ async def set_date_and_time(protocol: BidirectionalProtocol, time: datetime) -> 
         return await f(time)
 
 
-async def syncronize_time(protocol: BidirectionalProtocol) -> bool:
+async def synchronize_time(protocol: BidirectionalProtocol) -> bool:
     """
     Synchronizes the clock on the device to the time on the local device, accounting for the
     time waited for packets to clear.
