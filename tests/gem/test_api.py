@@ -2,13 +2,20 @@ from __future__ import annotations
 
 import asyncio
 import unittest
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.async_case import IsolatedAsyncioTestCase
 from unittest.mock import patch
 
 import pytest
 
-from siobrultech_protocols.gem.api import GET_SERIAL_NUMBER, ApiCall, R, T, call_api
+from siobrultech_protocols.gem.api import (
+    GET_SERIAL_NUMBER,
+    SET_DATE_AND_TIME,
+    ApiCall,
+    R,
+    T,
+    call_api,
+)
 from siobrultech_protocols.gem.packets import Packet
 from siobrultech_protocols.gem.protocol import (
     API_RESPONSE_WAIT_TIME,
@@ -37,6 +44,15 @@ class TestApi(unittest.TestCase):
     def testGetSerialNumber(self):
         self.assertCall(
             GET_SERIAL_NUMBER, "^^^RQSSRN", None, "1234567".encode(), 1234567
+        )
+
+    def testSetDateTime(self):
+        self.assertCall(
+            SET_DATE_AND_TIME,
+            "^^^SYSDTM12,08,23,13,30,28",
+            datetime.fromisoformat("2012-08-23 13:30:28"),
+            "DTM".encode(),
+            True,
         )
 
     def assertCall(
