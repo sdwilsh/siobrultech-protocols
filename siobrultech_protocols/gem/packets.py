@@ -8,6 +8,7 @@ import codecs
 import json
 from collections import OrderedDict
 from datetime import datetime
+from enum import IntEnum, unique
 from typing import Any, Dict, List, Optional
 
 from .fields import (
@@ -119,6 +120,15 @@ class Packet(object):
         return diff
 
 
+@unique
+class PacketFormatType(IntEnum):
+    BIN48_NET_TIME = 4
+    BIN48_NET = 5
+    BIN48_ABS = 7
+    BIN32_NET = 8
+    BIN32_ABS = 9
+
+
 class PacketFormat(object):
     NUM_PULSE_COUNTERS: int = 4
     NUM_TEMPERATURE_SENSORS: int = 8
@@ -126,11 +136,13 @@ class PacketFormat(object):
     def __init__(
         self,
         name: str,
+        type: PacketFormatType,
         num_channels: int,
         has_net_metering: bool = False,
         has_time_stamp: bool = False,
     ):
         self.name: str = name
+        self.type: PacketFormatType = type
         self.num_channels: int = num_channels
         self.fields: OrderedDict[str, Field] = OrderedDict()
 
@@ -216,21 +228,41 @@ def _checksum(packet: bytes, size: int):
 
 
 BIN48_NET_TIME = PacketFormat(
-    name="BIN48-NET-TIME", num_channels=48, has_net_metering=True, has_time_stamp=True
+    name="BIN48-NET-TIME",
+    type=PacketFormatType.BIN48_NET_TIME,
+    num_channels=48,
+    has_net_metering=True,
+    has_time_stamp=True,
 )
 
 BIN48_NET = PacketFormat(
-    name="BIN48-NET", num_channels=48, has_net_metering=True, has_time_stamp=False
+    name="BIN48-NET",
+    type=PacketFormatType.BIN48_NET,
+    num_channels=48,
+    has_net_metering=True,
+    has_time_stamp=False,
 )
 
 BIN48_ABS = PacketFormat(
-    name="BIN48-ABS", num_channels=48, has_net_metering=False, has_time_stamp=False
+    name="BIN48-ABS",
+    type=PacketFormatType.BIN48_ABS,
+    num_channels=48,
+    has_net_metering=False,
+    has_time_stamp=False,
 )
 
 BIN32_NET = PacketFormat(
-    name="BIN32-NET", num_channels=32, has_net_metering=True, has_time_stamp=False
+    name="BIN32-NET",
+    type=PacketFormatType.BIN32_NET,
+    num_channels=32,
+    has_net_metering=True,
+    has_time_stamp=False,
 )
 
 BIN32_ABS = PacketFormat(
-    name="BIN32-ABS", num_channels=32, has_net_metering=False, has_time_stamp=False
+    name="BIN32-ABS",
+    type=PacketFormatType.BIN32_ABS,
+    num_channels=32,
+    has_net_metering=False,
+    has_time_stamp=False,
 )

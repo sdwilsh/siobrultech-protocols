@@ -5,7 +5,15 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import Any, AsyncIterator, Callable, Coroutine, Generic, TypeVar
 
-from .const import CMD_GET_SERIAL_NUMBER, CMD_SET_DATE_AND_TIME
+from siobrultech_protocols.gem.packets import PacketFormatType
+
+from .const import (
+    CMD_GET_SERIAL_NUMBER,
+    CMD_SET_DATE_AND_TIME,
+    CMD_SET_PACKET_FORMAT,
+    CMD_SET_PACKET_SEND_INTERVAL,
+    CMD_SET_SECONDARY_PACKET_FORMAT,
+)
 from .protocol import PACKET_DELAY_CLEAR_TIME, BidirectionalProtocol
 
 T = TypeVar("T")
@@ -81,11 +89,46 @@ SET_DATE_AND_TIME = ApiCall[datetime, bool](
     formatter=lambda dt: f"{CMD_SET_DATE_AND_TIME}{dt.strftime('%y,%m,%d,%H,%M,%S')}",
     parser=lambda response: response == "DTM",
 )
+SET_PACKET_FORMAT = ApiCall[int, bool](
+    formatter=lambda pf: f"{CMD_SET_PACKET_FORMAT}{pf:02}",
+    parser=lambda response: response == "PKT",
+)
+SET_PACKET_SEND_INTERVAL = ApiCall[int, bool](
+    formatter=lambda si: f"{CMD_SET_PACKET_SEND_INTERVAL}{si:03}",
+    parser=lambda response: response == "IVL",
+)
+SET_SECONDARY_PACKET_FORMAT = ApiCall[int, bool](
+    formatter=lambda pf: f"{CMD_SET_SECONDARY_PACKET_FORMAT}{pf:02}",
+    parser=lambda response: response == "PKF",
+)
 
 
 async def set_date_and_time(protocol: BidirectionalProtocol, time: datetime) -> bool:
     async with call_api(SET_DATE_AND_TIME, protocol) as f:
         return await f(time)
+
+
+async def set_packet_format(
+    protocol: BidirectionalProtocol, format: PacketFormatType
+) -> bool:
+    async with call_api(SET_PACKET_FORMAT, protocol) as f:
+        return await f(format)
+
+
+async def set_packet_send_interval(
+    protocol: BidirectionalProtocol, send_interval_seconds: int
+) -> bool:
+    if send_interval_seconds < 0 or send_interval_seconds > 256:
+        raise ValueError("send_interval must be a postive number no greater than 256")
+    async with call_api(SET_PACKET_SEND_INTERVAL, protocol) as f:
+        return await f(send_interval_seconds)
+
+
+async def set_secondary_packet_format(
+    protocol: BidirectionalProtocol, format: PacketFormatType
+) -> bool:
+    async with call_api(SET_SECONDARY_PACKET_FORMAT, protocol) as f:
+        return await f(format)
 
 
 async def synchronize_time(protocol: BidirectionalProtocol) -> bool:

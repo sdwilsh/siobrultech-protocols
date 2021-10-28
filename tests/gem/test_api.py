@@ -11,15 +11,21 @@ import pytest
 from siobrultech_protocols.gem.api import (
     GET_SERIAL_NUMBER,
     SET_DATE_AND_TIME,
+    SET_PACKET_FORMAT,
+    SET_PACKET_SEND_INTERVAL,
+    SET_SECONDARY_PACKET_FORMAT,
     ApiCall,
     R,
     T,
     call_api,
     get_serial_number,
     set_date_and_time,
+    set_packet_format,
+    set_packet_send_interval,
+    set_secondary_packet_format,
     synchronize_time,
 )
-from siobrultech_protocols.gem.packets import Packet
+from siobrultech_protocols.gem.packets import Packet, PacketFormatType
 from siobrultech_protocols.gem.protocol import (
     API_RESPONSE_WAIT_TIME,
     BidirectionalProtocol,
@@ -58,6 +64,33 @@ class TestApi(unittest.TestCase):
             True,
         )
 
+    def testSetPacketFormat(self):
+        self.assertCall(
+            SET_PACKET_FORMAT,
+            "^^^SYSPKT02",
+            2,
+            "PKT".encode(),
+            True,
+        )
+
+    def testSetPacketSendInterval(self):
+        self.assertCall(
+            SET_PACKET_SEND_INTERVAL,
+            "^^^SYSIVL042",
+            42,
+            "IVL".encode(),
+            True,
+        )
+
+    def testSetSecondaryPacketFormat(self):
+        self.assertCall(
+            SET_SECONDARY_PACKET_FORMAT,
+            "^^^SYSPKF00",
+            0,
+            "PKF".encode(),
+            True,
+        )
+
     def assertCall(
         self,
         call: ApiCall[T, R],
@@ -67,9 +100,17 @@ class TestApi(unittest.TestCase):
         parsed_response: R,
     ):
         self.assertEqual(call.send_request(self._protocol, arg), API_RESPONSE_WAIT_TIME)
-        self.assertEqual(self._transport.writes, [request.encode()])
+        self.assertEqual(
+            self._transport.writes,
+            [request.encode()],
+            f"{request.encode()} should be written to the transport",
+        )
         self._protocol.data_received(encoded_response)
-        self.assertEqual(call.receive_response(self._protocol), parsed_response)
+        self.assertEqual(
+            call.receive_response(self._protocol),
+            parsed_response,
+            f"{parsed_response} should be the parsed value returned",
+        )
 
 
 class TestContextManager(IsolatedAsyncioTestCase):
@@ -142,6 +183,35 @@ class TestApiHelpers(IsolatedAsyncioTestCase):
         transport = MockRespondingTransport(self._protocol, "DTM".encode())
         self._protocol.connection_made(transport)
         success = await set_date_and_time(self._protocol, datetime(2020, 3, 11))
+        self.assertTrue(success)
+
+    @pytest.mark.asyncio
+    async def test_set_packet_format(self):
+        transport = MockRespondingTransport(self._protocol, "PKT".encode())
+        self._protocol.connection_made(transport)
+        success = await set_packet_format(self._protocol, PacketFormatType.BIN32_ABS)
+        self.assertTrue(success)
+
+    @pytest.mark.asyncio
+    async def test_set_packet_send_interval(self):
+        with self.assertRaises(ValueError):
+            await set_packet_send_interval(self._protocol, -1)
+
+        with self.assertRaises(ValueError):
+            await set_packet_send_interval(self._protocol, 257)
+
+        transport = MockRespondingTransport(self._protocol, "IVL".encode())
+        self._protocol.connection_made(transport)
+        success = await set_packet_send_interval(self._protocol, 42)
+        self.assertTrue(success)
+
+    @pytest.mark.asyncio
+    async def test_set_secondary_packet_format(self):
+        transport = MockRespondingTransport(self._protocol, "PKF".encode())
+        self._protocol.connection_made(transport)
+        success = await set_secondary_packet_format(
+            self._protocol, PacketFormatType.BIN32_ABS
+        )
         self.assertTrue(success)
 
     @pytest.mark.asyncio
