@@ -48,30 +48,17 @@ protocol_factory = functools.partial(PacketProtocol, queue=queue)
 If you want to send API commands as well, use a `BidirectionalProtocol` instead of a `PacketProtocol`, and keep track of the protocol instance for each active connection. Then given the `protocol` instance for a given connection, do the API call as follows:
 
 ```python
-import siobrultech_protocols.gem.api
+from siobrultech_protocols.gem.api import get_serial_number
 
-# Start the API request; do this once for each API call. Each protocol instance can only support one
-# API call at a time.
-delay = protocol.begin_api_request()
-sleep(delay)  # Wait for the specified delay, using whatever mechanism is appropriate for your environment
-
-# Send the API request. This example is for getting the serial number (which has no parameter):
-delay = api.GET_SERIAL_NUMBER.send_request(protocol, None)
-sleep(delay)
-
-# Parse the response after it has arrived
-result = api.GET_SERIAL_NUMBER.receive_response(protocol)
-
-# End the API request
-protocol.end_api_request()
+serial = await get_serial_number(protocol)
 ```
 
 ### Calling API endpoints that aren't supported by this library
 
-The API support in `siobrultech_protocols` is in its infancy. If you want to call an API endpoint for which this library doesn't provide a helper, you can make your own. For example, the following outline could be filled in to support the "get all settings" endpoint; you would use `GET_ALL_SETTINGS` in the same way as `GET_SERIAL_NUMBER` is used above:
+The API support in `siobrultech_protocols` is in its infancy. If you want to call an API endpoint for which this library doesn't provide a helper, you can make your own. For example, the following outline could be filled in to support the "get all settings" endpoint; you would use `GET_ALL_SETTINGS`:
 
 ```python
-from siobrultech_protocols.gem.api import ApiCall
+from siobrultech_protocols.gem import api
 
 # Define a Python data type for the response. It can be whatever you want; a simple Dict, a custom dataclass, etc.
 AllSettings = Dict[str, Any]
@@ -79,9 +66,43 @@ AllSettings = Dict[str, Any]
 def _parse_all_settings(response: str) -> AllSettings:
     # Here you would parse the response into the python type you defined above
 
-GET_ALL_SETTINGS = ApiCall[None, AllSettings](
+GET_ALL_SETTINGS = api.ApiCall[None, AllSettings](
     formatter=lambda _: "^^^RQSALL", parser=_parse_all_settings
 )
+
+# Start the API request; do this once for each API call. Each protocol instance can only support one
+# API call at a time.
+delay = protocol.begin_api_request()
+sleep(delay)  # Wait for the specified delay, using whatever mechanism is appropriate for your environment
+
+# Send the API request.
+delay = GET_ALL_SETTINGS.send_request(protocol, None)
+sleep(delay)
+
+# Parse the response after it has arrived
+settings = GET_ALL_SETTINGS.receive_response(protocol)
+
+# End the API request
+protocol.end_api_request()
+```
+
+Alternatively, we also provide a context wrapper that works with `asyncio` as well:
+
+```python
+from siobrultech_protocols.gem import api
+
+# Define a Python data type for the response. It can be whatever you want; a simple Dict, a custom dataclass, etc.
+AllSettings = Dict[str, Any]
+
+def _parse_all_settings(response: str) -> AllSettings:
+    # Here you would parse the response into the python type you defined above
+
+GET_ALL_SETTINGS = api.ApiCall[None, AllSettings](
+    formatter=lambda _: "^^^RQSALL", parser=_parse_all_settings
+)
+
+async with api.call_api(GET_ALL_SETTINGS, protocol) as f:
+    settings = await f(None)
 ```
 
 Take a look at some usage examples from [libraries that use this](https://github.com/sdwilsh/siobrultech-protocols/network/dependents).
