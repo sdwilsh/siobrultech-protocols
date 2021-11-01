@@ -15,13 +15,16 @@ from siobrultech_protocols.gem.api import (
     R,
     T,
     call_api,
+    get_serial_number,
+    set_date_and_time,
+    synchronize_time,
 )
 from siobrultech_protocols.gem.packets import Packet
 from siobrultech_protocols.gem.protocol import (
     API_RESPONSE_WAIT_TIME,
     BidirectionalProtocol,
 )
-from tests.gem.mock_transport import MockTransport
+from tests.gem.mock_transport import MockRespondingTransport, MockTransport
 
 
 class TestApi(unittest.TestCase):
@@ -108,3 +111,42 @@ class TestContextManager(IsolatedAsyncioTestCase):
         return asyncio.create_task(
             notify_data_received(), name=f"{__name__}:send_api_resonse"
         )
+
+
+class TestApiHelpers(IsolatedAsyncioTestCase):
+    def setUp(self):
+        self._protocol = BidirectionalProtocol(asyncio.Queue())
+
+        patcher_API_RESPONSE_WAIT_TIME = patch(
+            "siobrultech_protocols.gem.protocol.API_RESPONSE_WAIT_TIME",
+            timedelta(seconds=0),
+        )
+        patcher_API_RESPONSE_WAIT_TIME.start()
+        self.addCleanup(lambda: patcher_API_RESPONSE_WAIT_TIME.stop())
+        patcher_PACKET_DELAY_CLEAR_TIME = patch(
+            "siobrultech_protocols.gem.protocol.PACKET_DELAY_CLEAR_TIME",
+            timedelta(seconds=0),
+        )
+        patcher_PACKET_DELAY_CLEAR_TIME.start()
+        self.addCleanup(lambda: patcher_PACKET_DELAY_CLEAR_TIME.stop())
+
+    @pytest.mark.asyncio
+    async def test_get_serial_number(self):
+        transport = MockRespondingTransport(self._protocol, "1234567".encode())
+        self._protocol.connection_made(transport)
+        serial = await get_serial_number(self._protocol)
+        self.assertEqual(serial, 1234567)
+
+    @pytest.mark.asyncio
+    async def test_set_date_and_time(self):
+        transport = MockRespondingTransport(self._protocol, "DTM".encode())
+        self._protocol.connection_made(transport)
+        success = await set_date_and_time(self._protocol, datetime(2020, 3, 11))
+        self.assertTrue(success)
+
+    @pytest.mark.asyncio
+    async def test_synchronize_time(self):
+        transport = MockRespondingTransport(self._protocol, "DTM".encode())
+        self._protocol.connection_made(transport)
+        success = await synchronize_time(self._protocol)
+        self.assertTrue(success)
