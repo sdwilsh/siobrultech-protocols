@@ -53,6 +53,19 @@ from siobrultech_protocols.gem.api import get_serial_number
 serial = await get_serial_number(protocol)
 ```
 
+#### Methods to Get Information from a Device
+
+| Method              | Description                              |
+| ------------------- | ---------------------------------------- |
+| `get_serial_number` | Obtains the serial number of the device. |
+
+#### Methods to Setup a Device
+
+| Method              | Description                                                   |
+| ------------------- | ------------------------------------------------------------- |
+| `set_date_and_time` | Sets the GEM's clock to the specified `datetime`.             |
+| `synchronize_time`  | Synchronizes the GEM's clock to the time of the local device. |
+
 ### Calling API endpoints that aren't supported by this library
 
 The API support in `siobrultech_protocols` is in its infancy. If you want to call an API endpoint for which this library doesn't provide a helper, you can make your own. For example, the following outline could be filled in to support the "get all settings" endpoint; you would use `GET_ALL_SETTINGS`:
