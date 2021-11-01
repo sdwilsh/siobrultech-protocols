@@ -61,10 +61,13 @@ serial = await get_serial_number(protocol)
 
 #### Methods to Setup a Device
 
-| Method              | Description                                                   |
-| ------------------- | ------------------------------------------------------------- |
-| `set_date_and_time` | Sets the GEM's clock to the specified `datetime`.             |
-| `synchronize_time`  | Synchronizes the GEM's clock to the time of the local device. |
+| Method                        | Description                                                                 |
+| ----------------------------- | --------------------------------------------------------------------------- |
+| `set_date_and_time`           | Sets the GEM's clock to the specified `datetime`.                           |
+| `set_packet_format`           | Sets the GEM's packet format to the specified `PacketFormatType`.           |
+| `set_packet_send_interval`    | Sets the frequency (seconds) that the GEM should send packets.              |
+| `set_secondary_packet_format` | Sets the GEM's secondary packet format to the specified `PacketFormatType`. |
+| `synchronize_time`            | Synchronizes the GEM's clock to the time of the local device.               |
 
 ### Calling API endpoints that aren't supported by this library
 
