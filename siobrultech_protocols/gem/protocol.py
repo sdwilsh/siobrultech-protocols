@@ -49,9 +49,9 @@ class PacketProtocol(asyncio.Protocol):
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         self._transport = transport
 
-    def connection_lost(self, exc: Optional[Any]) -> None:
+    def connection_lost(self, exc: Optional[BaseException]) -> None:
         if exc is not None:
-            LOG.warning("Connection lost: {}".format(exc))
+            LOG.warning("Connection lost due to exception", exc)
         else:
             LOG.info("Connection closed")
         self._transport = None
