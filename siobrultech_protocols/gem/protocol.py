@@ -47,6 +47,7 @@ class PacketProtocol(asyncio.Protocol):
         self._transport: Optional[asyncio.BaseTransport] = None
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
+        LOG.info("Connection opened")
         self._transport = transport
 
     def connection_lost(self, exc: Optional[BaseException]) -> None:
@@ -57,7 +58,7 @@ class PacketProtocol(asyncio.Protocol):
         self._transport = None
 
     def data_received(self, data: bytes) -> None:
-        LOG.debug("Received {} bytes".format(len(data)))
+        LOG.debug(f"Received {len(data)} bytes")
         self._buffer.extend(data)
         try:
             packet = self._get_packet()
@@ -193,6 +194,7 @@ class BidirectionalProtocol(PacketProtocol):
 
     def data_received(self, data: bytes) -> None:
         if self._state == ProtocolState.SENT_API_REQUEST:
+            LOG.debug(f"Received {len(data)} bytes")
             self._api_buffer.extend(data)
         else:
             super().data_received(data)
