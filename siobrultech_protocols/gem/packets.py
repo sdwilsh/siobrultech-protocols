@@ -77,12 +77,14 @@ class Packet(object):
         )
 
     @property
-    def type(self) -> str:
-        return self.packet_format.name
+    def num_channels(self) -> int:
+        """The number of channels in the packet given the format.  There may be fewer on the device."""
+        return self.packet_format.num_channels
 
     @property
-    def num_channels(self) -> int:
-        return self.packet_format.num_channels
+    def type(self) -> str:
+        """The packet format type's name."""
+        return self.packet_format.name
 
     def delta_seconds(self, prev: int) -> int:
         field = self.packet_format.fields["seconds"]
