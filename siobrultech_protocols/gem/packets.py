@@ -49,7 +49,7 @@ class Packet(object):
         self.voltage: float = voltage
         self.absolute_watt_seconds: List[int] = absolute_watt_seconds
         self.polarized_watt_seconds: Optional[List[int]] = polarized_watt_seconds
-        self.currents: Optional[List[float]] = currents
+        self._currents: Optional[List[float]] = currents
         self.device_id: int = device_id
         self.serial_number: int = serial_number
         self.seconds: int = seconds
@@ -69,7 +69,7 @@ class Packet(object):
                 "voltage": self.voltage,
                 "absolute_watt_seconds": self.absolute_watt_seconds,
                 "polarized_watt_seconds": self.polarized_watt_seconds,
-                "currents": self.currents,
+                "currents": self._currents,
                 "pulse_counts": self.pulse_counts,
                 "temperatures": self.temperatures,
                 "time_stamp": self.time_stamp.isoformat(),
@@ -85,6 +85,16 @@ class Packet(object):
     def type(self) -> str:
         """The packet format type's name."""
         return self.packet_format.name
+
+    def get_current(self, channel_num: int) -> Optional[float]:
+        """Gets the current for the specified channel.
+
+        This may not be enabled on the device, and therefore may be None.
+        """
+        assert channel_num > 0 and channel_num <= self.num_channels
+        if self._currents is None:
+            return None
+        return self._currents[channel_num - 1]
 
     def delta_seconds(self, prev: int) -> int:
         field = self.packet_format.fields["seconds"]
