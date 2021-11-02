@@ -69,7 +69,7 @@ class TestApi(unittest.TestCase):
             SET_PACKET_FORMAT,
             "^^^SYSPKT02",
             2,
-            "PKT".encode(),
+            "PKT\r\n".encode(),
             True,
         )
 
@@ -78,7 +78,7 @@ class TestApi(unittest.TestCase):
             SET_PACKET_SEND_INTERVAL,
             "^^^SYSIVL042",
             42,
-            "IVL".encode(),
+            "IVL\r\n".encode(),
             True,
         )
 
@@ -87,7 +87,7 @@ class TestApi(unittest.TestCase):
             SET_SECONDARY_PACKET_FORMAT,
             "^^^SYSPKF00",
             0,
-            "PKF".encode(),
+            "PKF\r\n".encode(),
             True,
         )
 
@@ -187,7 +187,7 @@ class TestApiHelpers(IsolatedAsyncioTestCase):
 
     @pytest.mark.asyncio
     async def test_set_packet_format(self):
-        transport = MockRespondingTransport(self._protocol, "PKT".encode())
+        transport = MockRespondingTransport(self._protocol, "PKT\r\n".encode())
         self._protocol.connection_made(transport)
         success = await set_packet_format(self._protocol, PacketFormatType.BIN32_ABS)
         self.assertTrue(success)
@@ -200,14 +200,14 @@ class TestApiHelpers(IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             await set_packet_send_interval(self._protocol, 257)
 
-        transport = MockRespondingTransport(self._protocol, "IVL".encode())
+        transport = MockRespondingTransport(self._protocol, "IVL\r\n".encode())
         self._protocol.connection_made(transport)
         success = await set_packet_send_interval(self._protocol, 42)
         self.assertTrue(success)
 
     @pytest.mark.asyncio
     async def test_set_secondary_packet_format(self):
-        transport = MockRespondingTransport(self._protocol, "PKF".encode())
+        transport = MockRespondingTransport(self._protocol, "PKF\r\n".encode())
         self._protocol.connection_made(transport)
         success = await set_secondary_packet_format(
             self._protocol, PacketFormatType.BIN32_ABS
