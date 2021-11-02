@@ -47,11 +47,12 @@ class PacketProtocol(asyncio.Protocol):
         self._transport: Optional[asyncio.BaseTransport] = None
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
+        LOG.info("Connection opened")
         self._transport = transport
 
-    def connection_lost(self, exc: Optional[Any]) -> None:
+    def connection_lost(self, exc: Optional[BaseException]) -> None:
         if exc is not None:
-            LOG.warning("Connection lost: {}".format(exc))
+            LOG.warning("Connection lost due to exception", exc_info=exc)
         else:
             LOG.info("Connection closed")
         self._transport = None
@@ -193,6 +194,7 @@ class BidirectionalProtocol(PacketProtocol):
 
     def data_received(self, data: bytes) -> None:
         if self._state == ProtocolState.SENT_API_REQUEST:
+            LOG.debug("Received {} bytes".format(len(data)))
             self._api_buffer.extend(data)
         else:
             super().data_received(data)
