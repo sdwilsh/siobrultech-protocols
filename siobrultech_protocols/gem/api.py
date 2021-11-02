@@ -86,20 +86,20 @@ async def get_serial_number(protocol: BidirectionalProtocol) -> int:
 
 
 SET_DATE_AND_TIME = ApiCall[datetime, bool](
-    formatter=lambda dt: f"{CMD_SET_DATE_AND_TIME}{dt.strftime('%y,%m,%d,%H,%M,%S')}",
-    parser=lambda response: response == "DTM",
+    formatter=lambda dt: f"{CMD_SET_DATE_AND_TIME}{dt.strftime('%y,%m,%d,%H,%M,%S')}\r",
+    parser=lambda response: response == "DTM\r\n",
 )
 SET_PACKET_FORMAT = ApiCall[int, bool](
     formatter=lambda pf: f"{CMD_SET_PACKET_FORMAT}{pf:02}",
-    parser=lambda response: response == "PKT",
+    parser=lambda response: response == "PKT\r\n",
 )
 SET_PACKET_SEND_INTERVAL = ApiCall[int, bool](
     formatter=lambda si: f"{CMD_SET_PACKET_SEND_INTERVAL}{si:03}",
-    parser=lambda response: response == "IVL",
+    parser=lambda response: response == "IVL\r\n",
 )
 SET_SECONDARY_PACKET_FORMAT = ApiCall[int, bool](
     formatter=lambda pf: f"{CMD_SET_SECONDARY_PACKET_FORMAT}{pf:02}",
-    parser=lambda response: response == "PKF",
+    parser=lambda response: response == "PKF\r\n",
 )
 
 
