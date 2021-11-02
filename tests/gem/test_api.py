@@ -58,9 +58,9 @@ class TestApi(unittest.TestCase):
     def testSetDateTime(self):
         self.assertCall(
             SET_DATE_AND_TIME,
-            "^^^SYSDTM12,08,23,13,30,28",
+            "^^^SYSDTM12,08,23,13,30,28\r",
             datetime.fromisoformat("2012-08-23 13:30:28"),
-            "DTM".encode(),
+            "DTM\r\n".encode(),
             True,
         )
 
@@ -180,7 +180,7 @@ class TestApiHelpers(IsolatedAsyncioTestCase):
 
     @pytest.mark.asyncio
     async def test_set_date_and_time(self):
-        transport = MockRespondingTransport(self._protocol, "DTM".encode())
+        transport = MockRespondingTransport(self._protocol, "DTM\r\n".encode())
         self._protocol.connection_made(transport)
         success = await set_date_and_time(self._protocol, datetime(2020, 3, 11))
         self.assertTrue(success)
@@ -216,7 +216,7 @@ class TestApiHelpers(IsolatedAsyncioTestCase):
 
     @pytest.mark.asyncio
     async def test_synchronize_time(self):
-        transport = MockRespondingTransport(self._protocol, "DTM".encode())
+        transport = MockRespondingTransport(self._protocol, "DTM\r\n".encode())
         self._protocol.connection_made(transport)
         success = await synchronize_time(self._protocol)
         self.assertTrue(success)
