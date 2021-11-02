@@ -3,9 +3,13 @@ name: Build
 
 on: # yamllint disable-line rule:truthy
   push:
-    branches: [main]
+    branches:
+      - "main"
+      - "v**"
   pull_request:
-    branches: [main]
+    branches:
+      - "main"
+      - "v**"
 
 jobs:
   build:
