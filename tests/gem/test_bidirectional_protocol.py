@@ -2,7 +2,6 @@ import asyncio
 import unittest
 
 from siobrultech_protocols.gem.const import CMD_DELAY_NEXT_PACKET
-from siobrultech_protocols.gem.packets import Packet
 from siobrultech_protocols.gem.protocol import (
     BidirectionalProtocol,
     PacketProtocolMessage,

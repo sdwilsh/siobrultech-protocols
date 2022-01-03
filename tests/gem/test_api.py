@@ -25,7 +25,7 @@ from siobrultech_protocols.gem.api import (
     set_secondary_packet_format,
     synchronize_time,
 )
-from siobrultech_protocols.gem.packets import Packet, PacketFormatType
+from siobrultech_protocols.gem.packets import PacketFormatType
 from siobrultech_protocols.gem.protocol import (
     API_RESPONSE_WAIT_TIME,
     BidirectionalProtocol,
@@ -116,7 +116,7 @@ class TestApi(unittest.TestCase):
 
 class TestContextManager(IsolatedAsyncioTestCase):
     def setUp(self):
-        self._queue: asyncio.Queue[Packet] = asyncio.Queue()
+        self._queue: asyncio.Queue[PacketProtocolMessage] = asyncio.Queue()
         self._transport = MockTransport()
         self._protocol = BidirectionalProtocol(self._queue)
         self._protocol.connection_made(self._transport)
