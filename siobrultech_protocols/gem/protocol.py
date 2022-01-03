@@ -46,7 +46,7 @@ class PacketProtocolMessageType(Enum):
     ConnectionLost = auto()
 
 
-@dataclass
+@dataclass(frozen=True)
 class PacketProtocolMessage:
     """
     packet - for PacketReceived messages, the packet that was received; otherwise None
