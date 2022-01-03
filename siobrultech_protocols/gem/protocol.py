@@ -54,7 +54,7 @@ class PacketReceivedMessage(PacketProtocolMessage):
 
 @dataclass(frozen=True)
 class ConnectionLostMessage(PacketProtocolMessage):
-    """Message sent when a protocol loses its connection. exc is the exception that caused the connection to drop, if any. This message is not sent when the protocol's close() method is called."""
+    """Message sent when a protocol loses its connection. exc is the exception that caused the connection to drop, if any."""
 
     exc: Optional[BaseException]
 
@@ -86,7 +86,6 @@ class PacketProtocol(asyncio.Protocol):
             LOG.warning("%d: Connection lost due to exception", id(self), exc_info=exc)
         else:
             LOG.info("%d: Connection closed", id(self))
-        assert self._transport
         self._transport = None
         self._queue.put_nowait(ConnectionLostMessage(protocol=self, exc=exc))
 
