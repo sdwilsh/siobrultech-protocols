@@ -78,6 +78,7 @@ class PacketProtocol(asyncio.Protocol):
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         LOG.info("%d: Connection opened", id(self))
+        assert self._transport is None
         self._transport = transport
         self._queue.put_nowait(
             PacketProtocolMessage(
@@ -93,6 +94,7 @@ class PacketProtocol(asyncio.Protocol):
             LOG.warning("%d: Connection lost due to exception", id(self), exc_info=exc)
         else:
             LOG.info("%d: Connection closed", id(self))
+        assert self._transport
         self._transport = None
         self._queue.put_nowait(
             PacketProtocolMessage(
