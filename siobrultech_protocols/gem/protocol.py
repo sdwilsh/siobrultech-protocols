@@ -4,7 +4,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import timedelta
-from enum import Enum, auto, unique
+from enum import Enum, unique
 from typing import Any, Optional, Set, TypeVar, Union
 
 from .const import CMD_DELAY_NEXT_PACKET
@@ -31,32 +31,31 @@ T = TypeVar("T")
 R = TypeVar("R")
 
 
-@unique
-class PacketProtocolMessageType(Enum):
-    """
-    Used to indicate the type of a PacketProtocolMessage.
+@dataclass(frozen=True)
+class PacketProtocolMessage:
+    """Base class for messages sent by a PacketProtocol."""
 
-    ConnectionMade - a new connection has been made to this protocol. Sent once shortly after creation of the protocol instance.
-    PacketReceived - a packet has been received by the protocol.
-    ConnectionLost - the connection was lost. Sent once when the connection is dropped.
-    """
-
-    ConnectionMade = auto()
-    PacketReceived = auto()
-    ConnectionLost = auto()
+    protocol: PacketProtocol
 
 
 @dataclass(frozen=True)
-class PacketProtocolMessage:
-    """
-    packet - for PacketReceived messages, the packet that was received; otherwise None
-    protocol - for all messages, the protocol that sent the message
-    exc - for ConnectionLost messages, the exception that caused the connection to be lost, if any; otherwise None
-    """
+class ConnectionMadeMessage(PacketProtocolMessage):
+    """Message sent when a new connection has been made to a protocol. Sent once shortly after creation of the protocol instance."""
 
-    type: PacketProtocolMessageType
-    packet: Optional[Packet]
-    protocol: PacketProtocol
+    pass
+
+
+@dataclass(frozen=True)
+class PacketReceivedMessage(PacketProtocolMessage):
+    """Message sent when a packet has been received by the protocol."""
+
+    packet: Packet
+
+
+@dataclass(frozen=True)
+class ConnectionLostMessage(PacketProtocolMessage):
+    """Message sent when a protocol loses its connection. exc is the exception that caused the connection to drop, if any. This message is not sent when the protocol's close() method is called."""
+
     exc: Optional[BaseException]
 
 
@@ -80,14 +79,7 @@ class PacketProtocol(asyncio.Protocol):
         LOG.info("%d: Connection opened", id(self))
         assert self._transport is None
         self._transport = transport
-        self._queue.put_nowait(
-            PacketProtocolMessage(
-                type=PacketProtocolMessageType.ConnectionMade,
-                protocol=self,
-                packet=None,
-                exc=None,
-            )
-        )
+        self._queue.put_nowait(ConnectionMadeMessage(protocol=self))
 
     def connection_lost(self, exc: Optional[BaseException]) -> None:
         if exc is not None:
@@ -96,14 +88,7 @@ class PacketProtocol(asyncio.Protocol):
             LOG.info("%d: Connection closed", id(self))
         assert self._transport
         self._transport = None
-        self._queue.put_nowait(
-            PacketProtocolMessage(
-                type=PacketProtocolMessageType.ConnectionLost,
-                protocol=self,
-                packet=None,
-                exc=exc,
-            )
-        )
+        self._queue.put_nowait(ConnectionLostMessage(protocol=self, exc=exc))
 
     def data_received(self, data: bytes) -> None:
         LOG.debug("%d: Received %d bytes", id(self), len(data))
@@ -112,12 +97,7 @@ class PacketProtocol(asyncio.Protocol):
             packet = self._get_packet()
             while packet is not None:
                 self._queue.put_nowait(
-                    PacketProtocolMessage(
-                        type=PacketProtocolMessageType.PacketReceived,
-                        protocol=self,
-                        packet=packet,
-                        exc=None,
-                    )
+                    PacketReceivedMessage(protocol=self, packet=packet)
                 )
                 packet = self._get_packet()
         except Exception:

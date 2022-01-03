@@ -4,8 +4,10 @@ import unittest
 from siobrultech_protocols.gem.const import CMD_DELAY_NEXT_PACKET
 from siobrultech_protocols.gem.protocol import (
     BidirectionalProtocol,
+    ConnectionLostMessage,
+    ConnectionMadeMessage,
     PacketProtocolMessage,
-    PacketProtocolMessageType,
+    PacketReceivedMessage,
     ProtocolStateException,
 )
 from tests.gem.mock_transport import MockTransport
@@ -19,19 +21,17 @@ class TestBidirectionalProtocol(unittest.TestCase):
         self._protocol = BidirectionalProtocol(self._queue)
         self._protocol.connection_made(self._transport)
         message = self._queue.get_nowait()
-        assert message.type == PacketProtocolMessageType.ConnectionMade
+        assert isinstance(message, ConnectionMadeMessage)
         assert message.protocol is self._protocol
-        assert message.packet is None
-        assert message.exc is None
 
     def tearDown(self) -> None:
-        exc = Exception("Test")
-        self._protocol.connection_lost(exc=exc)
-        message = self._queue.get_nowait()
-        assert message.type == PacketProtocolMessageType.ConnectionLost
-        assert message.protocol is self._protocol
-        assert message.packet is None
-        assert message.exc is exc
+        if not self._transport.closed:
+            exc = Exception("Test")
+            self._protocol.connection_lost(exc=exc)
+            message = self._queue.get_nowait()
+            assert isinstance(message, ConnectionLostMessage)
+            assert message.protocol is self._protocol
+            assert message.exc is exc
         self._protocol.close()  # Close after connection_lost is not required, but at least should not crash
 
     def testClose(self):
@@ -105,10 +105,8 @@ class TestBidirectionalProtocol(unittest.TestCase):
 
     def assertPacket(self, expected_packet: str):
         message = self._queue.get_nowait()
-        assert message.type == PacketProtocolMessageType.PacketReceived
+        assert isinstance(message, PacketReceivedMessage)
         assert message.protocol is self._protocol
-        assert message.exc is None
-        assert message.packet
         assert_packet(expected_packet, message.packet)
 
 

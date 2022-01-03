@@ -34,7 +34,7 @@ pip install siobrultech-protocols
 
 ```python
 import functools
-from siobrultech_protocols.gem.protocols import PacketProtocol, PacketProtocolMessageType
+from siobrultech_protocols.gem.protocols import PacketProtocol, PacketReceivedMessage
 
 # Queue to get received packets from.
 queue = asyncio.Queue()
@@ -44,8 +44,7 @@ protocol_factory = functools.partial(PacketProtocol, queue=queue)
 
 # Dequeue and look for packet received messages. (Typically do this in a loop.)
 message = await queue.get()
-if message.type == PacketProtocolMessageType.PacketReceived:
-    assert message.packet
+if isinstance(message, PacketReceivedMessage):
     packet = message.packet
 queue.task_done()
 ```

@@ -5,9 +5,11 @@ import unittest
 
 from siobrultech_protocols.gem.packets import BIN48_NET, Packet
 from siobrultech_protocols.gem.protocol import (
+    ConnectionLostMessage,
+    ConnectionMadeMessage,
     PacketProtocol,
     PacketProtocolMessage,
-    PacketProtocolMessageType,
+    PacketReceivedMessage,
 )
 from tests.gem.mock_transport import MockTransport
 from tests.gem.packet_test_data import assert_packet, read_packet, read_packets
@@ -26,20 +28,17 @@ class TestPacketAccumulator(unittest.TestCase):
         self._protocol = PacketProtocol(queue=self._queue)
         self._protocol.connection_made(self._transport)
         message = self._queue.get_nowait()
-        assert message.type == PacketProtocolMessageType.ConnectionMade
+        assert isinstance(message, ConnectionMadeMessage)
         assert message.protocol is self._protocol
-        assert message.packet is None
-        assert message.exc is None
 
     def tearDown(self) -> None:
-        exc = Exception("Test")
-        self._protocol.connection_lost(exc=exc)
-        message = self._queue.get_nowait()
-        assert message.type == PacketProtocolMessageType.ConnectionLost
-        assert message.protocol is self._protocol
-        assert message.packet is None
-        assert message.exc is exc
-
+        if not self._transport.closed:
+            exc = Exception("Test")
+            self._protocol.connection_lost(exc=exc)
+            message = self._queue.get_nowait()
+            assert isinstance(message, ConnectionLostMessage)
+            assert message.protocol is self._protocol
+            assert message.exc is exc
         self._protocol.close()  # Close after connection_lost is not required, but at least should not crash
 
     def testClose(self):
@@ -119,10 +118,8 @@ class TestPacketAccumulator(unittest.TestCase):
 
     def expect_packet_recieved(self) -> Packet:
         message = self._queue.get_nowait()
-        assert message.type == PacketProtocolMessageType.PacketReceived
+        assert isinstance(message, PacketReceivedMessage)
         assert message.protocol is self._protocol
-        assert message.exc is None
-        assert message.packet
         return message.packet
 
 
