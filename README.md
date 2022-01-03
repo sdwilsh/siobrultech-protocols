@@ -47,6 +47,7 @@ message = await queue.get()
 if message.type == PacketProtocolMessageType.PacketReceived:
     assert message.packet
     packet = message.packet
+queue.task_done()
 ```
 
 ### Receiving data packets AND sending API commands
