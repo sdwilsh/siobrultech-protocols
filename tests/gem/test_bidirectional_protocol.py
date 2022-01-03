@@ -2,9 +2,12 @@ import asyncio
 import unittest
 
 from siobrultech_protocols.gem.const import CMD_DELAY_NEXT_PACKET
-from siobrultech_protocols.gem.packets import Packet
 from siobrultech_protocols.gem.protocol import (
     BidirectionalProtocol,
+    ConnectionLostMessage,
+    ConnectionMadeMessage,
+    PacketProtocolMessage,
+    PacketReceivedMessage,
     ProtocolStateException,
 )
 from tests.gem.mock_transport import MockTransport
@@ -13,10 +16,28 @@ from tests.gem.packet_test_data import assert_packet, read_packet
 
 class TestBidirectionalProtocol(unittest.TestCase):
     def setUp(self):
-        self._queue: asyncio.Queue[Packet] = asyncio.Queue()
+        self._queue: asyncio.Queue[PacketProtocolMessage] = asyncio.Queue()
         self._transport = MockTransport()
         self._protocol = BidirectionalProtocol(self._queue)
         self._protocol.connection_made(self._transport)
+        message = self._queue.get_nowait()
+        assert isinstance(message, ConnectionMadeMessage)
+        assert message.protocol is self._protocol
+
+    def tearDown(self) -> None:
+        if not self._transport.closed:
+            exc = Exception("Test")
+            self._protocol.connection_lost(exc=exc)
+            message = self._queue.get_nowait()
+            assert isinstance(message, ConnectionLostMessage)
+            assert message.protocol is self._protocol
+            assert message.exc is exc
+        self._protocol.close()  # Close after connection_lost is not required, but at least should not crash
+
+    def testClose(self):
+        self._protocol.close()
+
+        assert self._transport.closed
 
     def testBeginApi(self):
         self._protocol.begin_api_request()
@@ -83,8 +104,10 @@ class TestBidirectionalProtocol(unittest.TestCase):
         self.assertTrue(self._queue.empty())
 
     def assertPacket(self, expected_packet: str):
-        packet = self._queue.get_nowait()
-        assert_packet(expected_packet, packet)
+        message = self._queue.get_nowait()
+        assert isinstance(message, PacketReceivedMessage)
+        assert message.protocol is self._protocol
+        assert_packet(expected_packet, message.packet)
 
 
 if __name__ == "__main__":

@@ -34,13 +34,19 @@ pip install siobrultech-protocols
 
 ```python
 import functools
-from siobrultech_protocols.gem.protocols import PacketProtocol
+from siobrultech_protocols.gem.protocols import PacketProtocol, PacketReceivedMessage
 
 # Queue to get received packets from.
 queue = asyncio.Queue()
 
 # Pass this Protocol to whatever receives data from the device.
 protocol_factory = functools.partial(PacketProtocol, queue=queue)
+
+# Dequeue and look for packet received messages. (Typically do this in a loop.)
+message = await queue.get()
+if isinstance(message, PacketReceivedMessage):
+    packet = message.packet
+queue.task_done()
 ```
 
 ### Receiving data packets AND sending API commands
