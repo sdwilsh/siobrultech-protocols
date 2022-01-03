@@ -7,9 +7,13 @@ from siobrultech_protocols.gem.protocol import BidirectionalProtocol
 class MockTransport(asyncio.WriteTransport):
     def __init__(self) -> None:
         self.writes: List[bytes] = []
+        self.closed: bool = False
 
     def write(self, data: bytes) -> None:
         self.writes.append(data)
+
+    def close(self) -> None:
+        self.closed = True
 
 
 class MockRespondingTransport(asyncio.WriteTransport):

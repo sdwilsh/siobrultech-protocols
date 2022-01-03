@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass
 from datetime import timedelta
-from enum import Enum, unique
+from enum import Enum, auto, unique
 from typing import Any, Optional, Set, TypeVar, Union
 
 from .const import CMD_DELAY_NEXT_PACKET
@@ -30,12 +31,41 @@ T = TypeVar("T")
 R = TypeVar("R")
 
 
+@unique
+class PacketProtocolMessageType(Enum):
+    """
+    Used to indicate the type of a PacketProtocolMessage.
+
+    ConnectionMade - a new connection has been made to this protocol. Sent once shortly after creation of the protocol instance.
+    PacketReceived - a packet has been received by the protocol.
+    ConnectionLost - the connection was lost. Sent once when the connection is dropped.
+    """
+
+    ConnectionMade = auto()
+    PacketReceived = auto()
+    ConnectionLost = auto()
+
+
+@dataclass
+class PacketProtocolMessage:
+    """
+    packet - for PacketReceived messages, the packet that was received; otherwise None
+    protocol - for all messages, the protocol that sent the message
+    exc - for ConnectionLost messages, the exception that caused the connection to be lost, if any; otherwise None
+    """
+
+    type: PacketProtocolMessageType
+    packet: Optional[Packet]
+    protocol: PacketProtocol
+    exc: Optional[BaseException]
+
+
 class PacketProtocol(asyncio.Protocol):
     """Protocol implementation for processing a stream of data packets from a GreenEye Monitor."""
 
     def __init__(
         self,
-        queue: asyncio.Queue[Packet],
+        queue: asyncio.Queue[PacketProtocolMessage],
     ):
         """
         Create a new protocol instance.
@@ -49,6 +79,14 @@ class PacketProtocol(asyncio.Protocol):
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         LOG.info("%d: Connection opened", id(self))
         self._transport = transport
+        self._queue.put_nowait(
+            PacketProtocolMessage(
+                type=PacketProtocolMessageType.ConnectionMade,
+                protocol=self,
+                packet=None,
+                exc=None,
+            )
+        )
 
     def connection_lost(self, exc: Optional[BaseException]) -> None:
         if exc is not None:
@@ -56,6 +94,14 @@ class PacketProtocol(asyncio.Protocol):
         else:
             LOG.info("%d: Connection closed", id(self))
         self._transport = None
+        self._queue.put_nowait(
+            PacketProtocolMessage(
+                type=PacketProtocolMessageType.ConnectionLost,
+                protocol=self,
+                packet=None,
+                exc=exc,
+            )
+        )
 
     def data_received(self, data: bytes) -> None:
         LOG.debug("%d: Received %d bytes", id(self), len(data))
@@ -63,10 +109,23 @@ class PacketProtocol(asyncio.Protocol):
         try:
             packet = self._get_packet()
             while packet is not None:
-                self._queue.put_nowait(packet)
+                self._queue.put_nowait(
+                    PacketProtocolMessage(
+                        type=PacketProtocolMessageType.PacketReceived,
+                        protocol=self,
+                        packet=packet,
+                        exc=None,
+                    )
+                )
                 packet = self._get_packet()
         except Exception:
             LOG.exception("%d: Exception while attempting to parse a packet.", id(self))
+
+    def close(self) -> None:
+        """Closes the underlying transport, if any."""
+        if self._transport:
+            self._transport.close()
+        self._transport = None
 
     def _get_packet(self) -> Optional[Packet]:
         """
@@ -199,7 +258,7 @@ class ProtocolStateException(Exception):
 class BidirectionalProtocol(PacketProtocol):
     """Protocol implementation for bi-directional communication with a GreenEye Monitor."""
 
-    def __init__(self, queue: asyncio.Queue[Packet]):
+    def __init__(self, queue: asyncio.Queue[PacketProtocolMessage]):
         super().__init__(queue)
         self._state = ProtocolState.RECEIVING_PACKETS
         self._api_buffer = bytearray()
