@@ -13,6 +13,8 @@ from .const import (
     CMD_SET_PACKET_FORMAT,
     CMD_SET_PACKET_SEND_INTERVAL,
     CMD_SET_SECONDARY_PACKET_FORMAT,
+    ESCAPE_SEQUENCE,
+    TARGET_SERIAL_NUMBER_PREFIX,
 )
 from .protocol import PACKET_DELAY_CLEAR_TIME, BidirectionalProtocol
 
@@ -52,7 +54,8 @@ class ApiCall(Generic[T, R]):
         formatted_request = self._format_request(arg)
         if serial_number:
             formatted_request = formatted_request.replace(
-                "^^^", f"^^^NMB{serial_number%100000:05}"
+                ESCAPE_SEQUENCE,
+                f"{TARGET_SERIAL_NUMBER_PREFIX}{serial_number%100000:05}",
             )
 
         return protocol.send_api_request(formatted_request)
