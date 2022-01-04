@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import unittest
 from datetime import datetime, timedelta
+from typing import Optional
 from unittest.async_case import IsolatedAsyncioTestCase
 from unittest.mock import patch
 
@@ -49,11 +50,18 @@ class TestApi(unittest.TestCase):
     def testApiCall(self):
         call = ApiCall(lambda _: "REQUEST", lambda response: response)
 
-        self.assertCall(call, "REQUEST", None, "RESPONSE".encode(), "RESPONSE")
+        self.assertCall(call, "REQUEST", None, None, "RESPONSE".encode(), "RESPONSE")
+
+    def testApiCallWithSerialNumber(self):
+        call = ApiCall(lambda _: "^^^REQUEST", lambda response: response)
+
+        self.assertCall(
+            call, "^^^NMB02345REQUEST", None, 1002345, "RESPONSE".encode(), "RESPONSE"
+        )
 
     def testGetSerialNumber(self):
         self.assertCall(
-            GET_SERIAL_NUMBER, "^^^RQSSRN", None, "1234567".encode(), 1234567
+            GET_SERIAL_NUMBER, "^^^RQSSRN", None, None, "1234567".encode(), 1234567
         )
 
     def testSetDateTime(self):
@@ -61,6 +69,7 @@ class TestApi(unittest.TestCase):
             SET_DATE_AND_TIME,
             "^^^SYSDTM12,08,23,13,30,28\r",
             datetime.fromisoformat("2012-08-23 13:30:28"),
+            None,
             "DTM\r\n".encode(),
             True,
         )
@@ -70,6 +79,7 @@ class TestApi(unittest.TestCase):
             SET_PACKET_FORMAT,
             "^^^SYSPKT02",
             2,
+            None,
             "PKT\r\n".encode(),
             True,
         )
@@ -79,6 +89,7 @@ class TestApi(unittest.TestCase):
             SET_PACKET_SEND_INTERVAL,
             "^^^SYSIVL042",
             42,
+            None,
             "IVL\r\n".encode(),
             True,
         )
@@ -88,6 +99,7 @@ class TestApi(unittest.TestCase):
             SET_SECONDARY_PACKET_FORMAT,
             "^^^SYSPKF00",
             0,
+            None,
             "PKF\r\n".encode(),
             True,
         )
@@ -97,10 +109,14 @@ class TestApi(unittest.TestCase):
         call: ApiCall[T, R],
         request: str,
         arg: T,
+        serial_number: Optional[int],
         encoded_response: bytes,
         parsed_response: R,
     ):
-        self.assertEqual(call.send_request(self._protocol, arg), API_RESPONSE_WAIT_TIME)
+        self.assertEqual(
+            call.send_request(self._protocol, arg, serial_number),
+            API_RESPONSE_WAIT_TIME,
+        )
         self.assertEqual(
             self._transport.writes,
             [request.encode()],
