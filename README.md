@@ -129,6 +129,10 @@ async with api.call_api(GET_ALL_SETTINGS, protocol) as f:
 
 Take a look at some usage examples from [libraries that use this](https://github.com/sdwilsh/siobrultech-protocols/network/dependents).
 
+### Calling API endpoints when multiple devices share a connection
+
+All of the API helper methods take an optional `serial_number` parameter to target a specific device if there are multiple devices on the same connection.
+
 ## Development
 
 ### Setup

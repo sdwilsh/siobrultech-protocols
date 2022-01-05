@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-from typing import Any, AsyncIterator, Callable, Coroutine, Generic, TypeVar
+from typing import Any, AsyncIterator, Callable, Coroutine, Generic, Optional, TypeVar
 
 from siobrultech_protocols.gem.packets import PacketFormatType
 
@@ -13,6 +13,8 @@ from .const import (
     CMD_SET_PACKET_FORMAT,
     CMD_SET_PACKET_SEND_INTERVAL,
     CMD_SET_SECONDARY_PACKET_FORMAT,
+    ESCAPE_SEQUENCE,
+    TARGET_SERIAL_NUMBER_PREFIX,
 )
 from .protocol import PACKET_DELAY_CLEAR_TIME, BidirectionalProtocol
 
@@ -38,13 +40,25 @@ class ApiCall(Generic[T, R]):
         self._format_request = formatter
         self._parse_response = parser
 
-    def send_request(self, protocol: BidirectionalProtocol, arg: T) -> timedelta:
+    def send_request(
+        self,
+        protocol: BidirectionalProtocol,
+        arg: T,
+        serial_number: Optional[int] = None,
+    ) -> timedelta:
         """
         Send the request using the given protocol and argument.
 
         Returns the length of time the caller should wait before attempting to receive the response.
         """
-        return protocol.send_api_request(self._format_request(arg))
+        formatted_request = self._format_request(arg)
+        if serial_number:
+            formatted_request = formatted_request.replace(
+                ESCAPE_SEQUENCE,
+                f"{TARGET_SERIAL_NUMBER_PREFIX}{serial_number%100000:05}",
+            )
+
+        return protocol.send_api_request(formatted_request)
 
     def receive_response(self, protocol: BidirectionalProtocol) -> R:
         """
@@ -58,10 +72,12 @@ class ApiCall(Generic[T, R]):
 
 @asynccontextmanager
 async def call_api(
-    api: ApiCall[T, R], protocol: BidirectionalProtocol
+    api: ApiCall[T, R],
+    protocol: BidirectionalProtocol,
+    serial_number: Optional[int] = None,
 ) -> AsyncIterator[Callable[[T], Coroutine[Any, None, R]]]:
     async def send(arg: T) -> R:
-        delay = api.send_request(protocol, arg)
+        delay = api.send_request(protocol, arg, serial_number)
         await asyncio.sleep(delay.seconds)
 
         return api.receive_response(protocol)
@@ -80,8 +96,10 @@ GET_SERIAL_NUMBER = ApiCall[None, int](
 )
 
 
-async def get_serial_number(protocol: BidirectionalProtocol) -> int:
-    async with call_api(GET_SERIAL_NUMBER, protocol) as f:
+async def get_serial_number(
+    protocol: BidirectionalProtocol, serial_number: Optional[int] = None
+) -> int:
+    async with call_api(GET_SERIAL_NUMBER, protocol, serial_number) as f:
         return await f(None)
 
 
@@ -103,38 +121,48 @@ SET_SECONDARY_PACKET_FORMAT = ApiCall[int, bool](
 )
 
 
-async def set_date_and_time(protocol: BidirectionalProtocol, time: datetime) -> bool:
-    async with call_api(SET_DATE_AND_TIME, protocol) as f:
+async def set_date_and_time(
+    protocol: BidirectionalProtocol, time: datetime, serial_number: Optional[int] = None
+) -> bool:
+    async with call_api(SET_DATE_AND_TIME, protocol, serial_number) as f:
         return await f(time)
 
 
 async def set_packet_format(
-    protocol: BidirectionalProtocol, format: PacketFormatType
+    protocol: BidirectionalProtocol,
+    format: PacketFormatType,
+    serial_number: Optional[int] = None,
 ) -> bool:
-    async with call_api(SET_PACKET_FORMAT, protocol) as f:
+    async with call_api(SET_PACKET_FORMAT, protocol, serial_number) as f:
         return await f(format)
 
 
 async def set_packet_send_interval(
-    protocol: BidirectionalProtocol, send_interval_seconds: int
+    protocol: BidirectionalProtocol,
+    send_interval_seconds: int,
+    serial_number: Optional[int] = None,
 ) -> bool:
     if send_interval_seconds < 0 or send_interval_seconds > 256:
         raise ValueError("send_interval must be a postive number no greater than 256")
-    async with call_api(SET_PACKET_SEND_INTERVAL, protocol) as f:
+    async with call_api(SET_PACKET_SEND_INTERVAL, protocol, serial_number) as f:
         return await f(send_interval_seconds)
 
 
 async def set_secondary_packet_format(
-    protocol: BidirectionalProtocol, format: PacketFormatType
+    protocol: BidirectionalProtocol,
+    format: PacketFormatType,
+    serial_number: Optional[int] = None,
 ) -> bool:
-    async with call_api(SET_SECONDARY_PACKET_FORMAT, protocol) as f:
+    async with call_api(SET_SECONDARY_PACKET_FORMAT, protocol, serial_number) as f:
         return await f(format)
 
 
-async def synchronize_time(protocol: BidirectionalProtocol) -> bool:
+async def synchronize_time(
+    protocol: BidirectionalProtocol, serial_number: Optional[int] = None
+) -> bool:
     """
     Synchronizes the clock on the device to the time on the local device, accounting for the
     time waited for packets to clear.
     """
     time = datetime.now() + PACKET_DELAY_CLEAR_TIME
-    return await set_date_and_time(protocol, time)
+    return await set_date_and_time(protocol, time, serial_number)
