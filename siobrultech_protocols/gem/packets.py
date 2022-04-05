@@ -43,7 +43,7 @@ class Packet(object):
         polarized_watt_seconds: Optional[List[int]] = None,
         currents: Optional[List[float]] = None,
         time_stamp: Optional[datetime] = None,
-        **kwargs: Dict[str, Any]
+        **kwargs: Dict[str, Any],
     ):
         self.packet_format: PacketFormat = packet_format
         self.voltage: float = voltage
