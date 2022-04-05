@@ -56,8 +56,8 @@ class TestPacketDeltaComputation(unittest.TestCase):
         packet = parse_packet("BIN32-ABS.bin", packets.BIN32_ABS)
         self.assertEqual(997492, packet.seconds)
 
-        self.assertEqual(997493, packet.delta_seconds(2 ** 24 - 1))
-        self.assertEqual(1000000, packet.delta_seconds(2 ** 24 - (1000000 - 997492)))
+        self.assertEqual(997493, packet.delta_seconds(2**24 - 1))
+        self.assertEqual(1000000, packet.delta_seconds(2**24 - (1000000 - 997492)))
 
     def test_packet_delta_pulses(self):
         packet = parse_packet("BIN48-NET-TIME_tricky.bin", packets.BIN48_NET_TIME)
@@ -68,7 +68,7 @@ class TestPacketDeltaComputation(unittest.TestCase):
         self.assertEqual(
             [1100, 1200, 1300, 1400],
             [
-                packet.delta_pulse_count(i, 2 ** 24 - 1000)
+                packet.delta_pulse_count(i, 2**24 - 1000)
                 for i in range(0, len(packet.pulse_counts))
             ],
         )
@@ -119,7 +119,7 @@ class TestPacketDeltaComputation(unittest.TestCase):
                 for i in range(0, len(packet.absolute_watt_seconds))
             ],
             [
-                packet.delta_absolute_watt_seconds(i, 2 ** 40 - 1000)
+                packet.delta_absolute_watt_seconds(i, 2**40 - 1000)
                 for i in range(0, len(packet.absolute_watt_seconds))
             ],
         )
@@ -134,11 +134,11 @@ class TestPacketDeltaComputation(unittest.TestCase):
 
         self.assertEqual(
             [
-                packet.polarized_watt_seconds[i] + 1000 + 2 ** 39
+                packet.polarized_watt_seconds[i] + 1000 + 2**39
                 for i in range(0, len(packet.polarized_watt_seconds))
             ],
             [
-                packet.delta_polarized_watt_seconds(i, 2 ** 39 - 1000)
+                packet.delta_polarized_watt_seconds(i, 2**39 - 1000)
                 for i in range(0, len(packet.polarized_watt_seconds))
             ],
         )
