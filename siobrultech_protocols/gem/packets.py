@@ -121,6 +121,58 @@ class Packet(object):
             diff = cur - prev
         return diff
 
+    @staticmethod
+    def _packets_sorted(packet_a: Packet, packet_b: Packet) -> tuple[Packet, Packet]:
+        if packet_a.seconds < packet_b.seconds:
+            oldest_packet = packet_a
+            newest_packet = packet_b
+        else:
+            oldest_packet = packet_b
+            newest_packet = packet_a
+        return oldest_packet, newest_packet
+
+    def get_average_power(
+        self,
+        index: int,
+        other_packet: Packet,
+    ) -> float:
+        oldest_packet, newest_packet = self._packets_sorted(self, other_packet)
+        elapsed_seconds = newest_packet.delta_seconds(oldest_packet.seconds)
+
+        # The Brultech devices measure one or two things with their counters:
+        #  * Absolute Watt-seconds, which is incoming and outgoing Watt-seconds, combined.
+        #  * Polarized Watt-seconds (only when NET metering is enabled), which is just outgoing Watt-seconds.
+        #
+        # Therefore, in order to compute the average power (Watts) between packets flowing through the point that is
+        # being measured, we need to compute two things:
+        #  * Produced Watt-seconds, which is just Polarized Watt-seconds.
+        #  * Consumed Watt-seconds, which is Absolute Watt-seconds minus Polarized Watt-seconds.
+        #
+        # Given those two values, the average power is just the (consumed - produced) / elapsed time.  In this way, a
+        # negative flow of power occurs if more power was produced than consumed.
+
+        delta_absolute_watt_seconds = newest_packet.delta_absolute_watt_seconds(
+            index, oldest_packet.absolute_watt_seconds[index]
+        )
+
+        # It is only possible to produce if the given channel has NET metering enabled.
+        delta_produced_watt_seconds = (
+            newest_packet.delta_polarized_watt_seconds(
+                index, oldest_packet.polarized_watt_seconds[index]
+            )
+            if oldest_packet.polarized_watt_seconds is not None
+            and newest_packet.polarized_watt_seconds is not None
+            else 0.0
+        )
+
+        delta_consumed_watt_seconds = (
+            delta_absolute_watt_seconds - delta_produced_watt_seconds
+        )
+
+        return (
+            delta_consumed_watt_seconds - delta_produced_watt_seconds
+        ) / elapsed_seconds
+
 
 @unique
 class PacketFormatType(IntEnum):

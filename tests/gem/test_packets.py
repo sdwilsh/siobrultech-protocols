@@ -1,7 +1,20 @@
+import functools
 import unittest
 
 from siobrultech_protocols.gem import packets
 from tests.gem.packet_test_data import assert_packet, read_packet
+
+packet_maker = functools.partial(
+    packets.Packet,
+    packet_format=packets.BIN32_ABS,
+    voltage=120.0,
+    absolute_watt_seconds=[0] * packets.BIN32_NET.num_channels,
+    device_id=123456,
+    serial_number=123456,
+    seconds=0,
+    pulse_counts=[0] * packets.PacketFormat.NUM_PULSE_COUNTERS,
+    temperatures=[0] * packets.PacketFormat.NUM_TEMPERATURE_SENSORS,
+)
 
 
 class TestPacketFormats(unittest.TestCase):
@@ -142,6 +155,49 @@ class TestPacketDeltaComputation(unittest.TestCase):
                 for i in range(0, len(packet.polarized_watt_seconds))
             ],
         )
+
+
+class TestPacketAverageComputation(unittest.TestCase):
+    def test_packet_average_power(self):
+        packet_a = packet_maker(
+            absolute_watt_seconds=[10] * packets.BIN32_ABS.num_channels,
+        )
+        packet_b = packet_maker(
+            absolute_watt_seconds=[20] * packets.BIN32_ABS.num_channels,
+            seconds=10,
+        )
+        self.assertEqual(packet_a.get_average_power(0, packet_b), 1.0)
+        self.assertEqual(packet_b.get_average_power(0, packet_a), 1.0)
+
+    def test_packet_average_power_net_metering_mixed(self):
+        packet_a = packet_maker(
+            absolute_watt_seconds=[10] * packets.BIN32_NET.num_channels,
+            packet_format=packets.BIN32_NET,
+            polarized_watt_seconds=[0] * packets.BIN32_NET.num_channels,
+        )
+        packet_b = packet_maker(
+            absolute_watt_seconds=[40] * packets.BIN32_NET.num_channels,
+            packet_format=packets.BIN32_NET,
+            polarized_watt_seconds=[10] * packets.BIN32_NET.num_channels,
+            seconds=10,
+        )
+        self.assertEqual(packet_a.get_average_power(0, packet_b), 1.0)
+        self.assertEqual(packet_b.get_average_power(0, packet_a), 1.0)
+
+    def test_produced_power(self):
+        packet_a = packet_maker(
+            absolute_watt_seconds=[0] * packets.BIN32_NET.num_channels,
+            packet_format=packets.BIN32_NET,
+            polarized_watt_seconds=[0] * packets.BIN32_NET.num_channels,
+        )
+        packet_b = packet_maker(
+            absolute_watt_seconds=[10] * packets.BIN32_NET.num_channels,
+            packet_format=packets.BIN32_NET,
+            polarized_watt_seconds=[10] * packets.BIN32_NET.num_channels,
+            seconds=10,
+        )
+        self.assertEqual(packet_a.get_average_power(0, packet_b), -1.0)
+        self.assertEqual(packet_b.get_average_power(0, packet_a), -1.0)
 
 
 def check_packet(packet_file_name: str, packet_format: packets.PacketFormat):
