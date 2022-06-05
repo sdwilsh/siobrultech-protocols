@@ -173,6 +173,15 @@ class Packet(object):
             delta_consumed_watt_seconds - delta_produced_watt_seconds
         ) / elapsed_seconds
 
+    def get_average_pulse_rate(self, index: int, other_packet: Packet) -> float:
+        oldest_packet, newest_packet = self._packets_sorted(self, other_packet)
+        elapsed_seconds = newest_packet.delta_seconds(oldest_packet.seconds)
+
+        return (
+            newest_packet.delta_pulse_count(index, oldest_packet.pulse_counts[index])
+            / elapsed_seconds
+        )
+
 
 @unique
 class PacketFormatType(IntEnum):
