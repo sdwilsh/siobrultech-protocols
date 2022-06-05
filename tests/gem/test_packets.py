@@ -199,6 +199,17 @@ class TestPacketAverageComputation(unittest.TestCase):
         self.assertEqual(packet_a.get_average_power(0, packet_b), -1.0)
         self.assertEqual(packet_b.get_average_power(0, packet_a), -1.0)
 
+    def test_pulse_rate(self):
+        packet_a = packet_maker(
+            pulse_counts=[0] * packets.BIN32_ABS.NUM_PULSE_COUNTERS,
+        )
+        packet_b = packet_maker(
+            pulse_counts=[15] * packets.BIN32_ABS.NUM_PULSE_COUNTERS,
+            seconds=10,
+        )
+        self.assertEqual(packet_a.get_average_pulse_rate(0, packet_b), 1.5)
+        self.assertEqual(packet_b.get_average_pulse_rate(0, packet_a), 1.5)
+
 
 def check_packet(packet_file_name: str, packet_format: packets.PacketFormat):
     packet = parse_packet(packet_file_name, packet_format)
