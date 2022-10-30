@@ -18,7 +18,9 @@ from .const import (
 )
 from .protocol import PACKET_DELAY_CLEAR_TIME, BidirectionalProtocol
 
+# Argument type of an ApiCall.
 T = TypeVar("T")
+# Return type of an ApiCall response parser.
 R = TypeVar("R")
 
 
