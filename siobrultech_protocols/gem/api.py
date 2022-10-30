@@ -16,7 +16,7 @@ from .const import (
     ESCAPE_SEQUENCE,
     TARGET_SERIAL_NUMBER_PREFIX,
 )
-from .protocol import PACKET_DELAY_CLEAR_TIME, BidirectionalProtocol
+from .protocol import BidirectionalProtocol
 
 # Argument type of an ApiCall.
 T = TypeVar("T")
@@ -166,5 +166,5 @@ async def synchronize_time(
     Synchronizes the clock on the device to the time on the local device, accounting for the
     time waited for packets to clear.
     """
-    time = datetime.now() + PACKET_DELAY_CLEAR_TIME
+    time = datetime.now() + protocol.packet_delay_clear_time
     return await set_date_and_time(protocol, time, serial_number)

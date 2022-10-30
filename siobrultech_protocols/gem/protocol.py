@@ -7,7 +7,7 @@ from datetime import timedelta
 from enum import Enum, unique
 from typing import Any, Optional, Set, Union
 
-from .const import CMD_DELAY_NEXT_PACKET
+from .const import CMD_DELAY_NEXT_PACKET, PACKET_DELAY_CLEAR_TIME_DEFAULT
 from .packets import (
     BIN32_ABS,
     BIN32_NET,
@@ -22,9 +22,6 @@ LOG = logging.getLogger(__name__)
 
 PACKET_HEADER = bytes.fromhex("feff")
 API_RESPONSE_WAIT_TIME = timedelta(seconds=3)  # Time to wait for an API response
-PACKET_DELAY_CLEAR_TIME = timedelta(
-    seconds=3
-)  # Time to wait after a packet delay request so that GEM can finish sending any pending packets
 
 
 @dataclass(frozen=True)
@@ -235,10 +232,31 @@ class ProtocolStateException(Exception):
 class BidirectionalProtocol(PacketProtocol):
     """Protocol implementation for bi-directional communication with a GreenEye Monitor."""
 
-    def __init__(self, queue: asyncio.Queue[PacketProtocolMessage]):
+    """
+    Create a new BidirectionalProtocol
+
+    The passed in queue contains full packets that have been received.
+    The packet_delay_clear_time plus API_RESPONSE_WAIT_TIME must be less than 15 seconds.
+    """
+
+    def __init__(
+        self,
+        queue: asyncio.Queue[PacketProtocolMessage],
+        packet_delay_clear_time: timedelta = PACKET_DELAY_CLEAR_TIME_DEFAULT,
+    ):
+        # Ensure that the clear time and the response wait time fit within the 15 second packet delay interval that is requested.
+        assert (packet_delay_clear_time + API_RESPONSE_WAIT_TIME) < timedelta(
+            seconds=15
+        )
+
         super().__init__(queue)
-        self._state = ProtocolState.RECEIVING_PACKETS
         self._api_buffer = bytearray()
+        self._packet_delay_clear_time = packet_delay_clear_time
+        self._state = ProtocolState.RECEIVING_PACKETS
+
+    @property
+    def packet_delay_clear_time(self) -> timedelta:
+        return self._packet_delay_clear_time
 
     def data_received(self, data: bytes) -> None:
         if self._state == ProtocolState.SENT_API_REQUEST:
@@ -263,7 +281,7 @@ class BidirectionalProtocol(PacketProtocol):
         )  # Delay packets for 15 seconds
         self._state = ProtocolState.SENT_PACKET_DELAY_REQUEST
 
-        return PACKET_DELAY_CLEAR_TIME
+        return self._packet_delay_clear_time
 
     def send_api_request(self, request: str) -> timedelta:
         """
