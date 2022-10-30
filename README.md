@@ -138,7 +138,7 @@ All of the API helper methods take an optional `serial_number` parameter to targ
 ### Setup
 
 ```
-python3.9 -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate
 
 # Install Requirements
