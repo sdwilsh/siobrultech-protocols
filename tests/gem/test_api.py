@@ -39,7 +39,9 @@ class TestApi(unittest.TestCase):
     def setUp(self):
         self._queue: asyncio.Queue[PacketProtocolMessage] = asyncio.Queue()
         self._transport = MockTransport()
-        self._protocol = BidirectionalProtocol(self._queue)
+        self._protocol = BidirectionalProtocol(
+            self._queue, packet_delay_clear_time=timedelta(seconds=0)
+        )
         self._protocol.connection_made(self._transport)
 
         # Put the protocol into a state where it's ready for commands
@@ -134,16 +136,14 @@ class TestContextManager(IsolatedAsyncioTestCase):
     def setUp(self):
         self._queue: asyncio.Queue[PacketProtocolMessage] = asyncio.Queue()
         self._transport = MockTransport()
-        self._protocol = BidirectionalProtocol(self._queue)
+        self._protocol = BidirectionalProtocol(
+            self._queue, packet_delay_clear_time=timedelta(seconds=0)
+        )
         self._protocol.connection_made(self._transport)
 
     @pytest.mark.asyncio
     @patch(
         "siobrultech_protocols.gem.protocol.API_RESPONSE_WAIT_TIME",
-        timedelta(seconds=0),
-    )
-    @patch(
-        "siobrultech_protocols.gem.protocol.PACKET_DELAY_CLEAR_TIME",
         timedelta(seconds=0),
     )
     async def testApiCall(self):
@@ -173,7 +173,9 @@ class TestContextManager(IsolatedAsyncioTestCase):
 
 class TestApiHelpers(IsolatedAsyncioTestCase):
     def setUp(self):
-        self._protocol = BidirectionalProtocol(asyncio.Queue())
+        self._protocol = BidirectionalProtocol(
+            asyncio.Queue(), packet_delay_clear_time=timedelta(seconds=0)
+        )
 
         patcher_API_RESPONSE_WAIT_TIME = patch(
             "siobrultech_protocols.gem.protocol.API_RESPONSE_WAIT_TIME",
@@ -181,12 +183,6 @@ class TestApiHelpers(IsolatedAsyncioTestCase):
         )
         patcher_API_RESPONSE_WAIT_TIME.start()
         self.addCleanup(lambda: patcher_API_RESPONSE_WAIT_TIME.stop())
-        patcher_PACKET_DELAY_CLEAR_TIME = patch(
-            "siobrultech_protocols.gem.protocol.PACKET_DELAY_CLEAR_TIME",
-            timedelta(seconds=0),
-        )
-        patcher_PACKET_DELAY_CLEAR_TIME.start()
-        self.addCleanup(lambda: patcher_PACKET_DELAY_CLEAR_TIME.stop())
 
     @pytest.mark.asyncio
     async def test_get_serial_number(self):

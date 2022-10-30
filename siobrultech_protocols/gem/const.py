@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 ESCAPE_SEQUENCE = "^^^"
 _SYSTEM_PREFIX = ESCAPE_SEQUENCE + "SYS"
 _REQUEST_PREFIX = ESCAPE_SEQUENCE + "RQS"
@@ -10,3 +12,7 @@ CMD_SET_DATE_AND_TIME = _SYSTEM_PREFIX + "DTM"
 CMD_SET_PACKET_FORMAT = _SYSTEM_PREFIX + "PKT"
 CMD_SET_PACKET_SEND_INTERVAL = _SYSTEM_PREFIX + "IVL"
 CMD_SET_SECONDARY_PACKET_FORMAT = _SYSTEM_PREFIX + "PKF"
+
+PACKET_DELAY_CLEAR_TIME_DEFAULT = timedelta(
+    seconds=3
+)  # Time to wait after a packet delay request so that GEM can finish sending any pending packets
