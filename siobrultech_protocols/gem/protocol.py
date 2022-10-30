@@ -5,7 +5,7 @@ import logging
 from dataclasses import dataclass
 from datetime import timedelta
 from enum import Enum, unique
-from typing import Any, Optional, Set, TypeVar, Union
+from typing import Any, Optional, Set, Union
 
 from .const import CMD_DELAY_NEXT_PACKET
 from .packets import (
@@ -25,10 +25,6 @@ API_RESPONSE_WAIT_TIME = timedelta(seconds=3)  # Time to wait for an API respons
 PACKET_DELAY_CLEAR_TIME = timedelta(
     seconds=3
 )  # Time to wait after a packet delay request so that GEM can finish sending any pending packets
-
-
-T = TypeVar("T")
-R = TypeVar("R")
 
 
 @dataclass(frozen=True)
