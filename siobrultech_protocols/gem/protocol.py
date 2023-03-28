@@ -14,6 +14,8 @@ from .packets import (
     BIN48_ABS,
     BIN48_NET,
     BIN48_NET_TIME,
+    ECM_1220,
+    ECM_1240,
     MalformedPacketException,
     Packet,
 )
@@ -148,6 +150,10 @@ class PacketProtocol(asyncio.Protocol):
                 packet_format = BIN48_ABS
             elif format_code == 5:
                 packet_format = BIN48_NET
+            elif format_code == 3:
+                packet_format = ECM_1240
+            elif format_code == 1:
+                packet_format = ECM_1220
             else:
                 skip_malformed_packet("unknown format code 0x%x", format_code)
                 continue
