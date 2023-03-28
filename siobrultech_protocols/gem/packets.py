@@ -193,56 +193,16 @@ class PacketFormatType(IntEnum):
 
 
 class PacketFormat(object):
-    NUM_PULSE_COUNTERS: int = 4
-    NUM_TEMPERATURE_SENSORS: int = 8
-
     def __init__(
         self,
         name: str,
         type: PacketFormatType,
         num_channels: int,
-        has_net_metering: bool = False,
-        has_time_stamp: bool = False,
     ):
         self.name: str = name
         self.type: PacketFormatType = type
         self.num_channels: int = num_channels
         self.fields: OrderedDict[str, Field] = OrderedDict()
-
-        self.fields["header"] = NumericField(3, ByteOrder.HiToLo, Sign.Unsigned)
-        self.fields["voltage"] = FloatingPointField(
-            2, ByteOrder.HiToLo, Sign.Unsigned, 10.0
-        )
-        self.fields["absolute_watt_seconds"] = NumericArrayField(
-            num_channels, 5, ByteOrder.LoToHi, Sign.Unsigned
-        )
-        if has_net_metering:
-            self.fields["polarized_watt_seconds"] = NumericArrayField(
-                num_channels, 5, ByteOrder.LoToHi, Sign.Unsigned
-            )
-        self.fields["serial_number"] = NumericField(2, ByteOrder.HiToLo, Sign.Unsigned)
-        self.fields["reserved"] = ByteField()
-        self.fields["device_id"] = NumericField(1, ByteOrder.HiToLo, Sign.Unsigned)
-        self.fields["currents"] = FloatingPointArrayField(
-            num_channels, 2, ByteOrder.LoToHi, Sign.Unsigned, 50.0
-        )
-        self.fields["seconds"] = NumericField(3, ByteOrder.LoToHi, Sign.Unsigned)
-        self.fields["pulse_counts"] = NumericArrayField(
-            PacketFormat.NUM_PULSE_COUNTERS, 3, ByteOrder.LoToHi, Sign.Unsigned
-        )
-        self.fields["temperatures"] = FloatingPointArrayField(
-            PacketFormat.NUM_TEMPERATURE_SENSORS,
-            2,
-            ByteOrder.LoToHi,
-            Sign.Signed,
-            2.0,
-        )
-        if num_channels == 32:
-            self.fields["spare_bytes"] = BytesField(2)
-        if has_time_stamp:
-            self.fields["time_stamp"] = DateTimeField()
-        self.fields["footer"] = NumericField(2, ByteOrder.HiToLo, Sign.Unsigned)
-        self.fields["checksum"] = ByteField()
 
     @property
     def size(self) -> int:
@@ -279,6 +239,56 @@ class PacketFormat(object):
         return Packet(**args)  # type: ignore
 
 
+class GEMPacketFormat(PacketFormat):
+    NUM_PULSE_COUNTERS: int = 4
+    NUM_TEMPERATURE_SENSORS: int = 8
+
+    def __init__(
+        self,
+        name: str,
+        type: PacketFormatType,
+        num_channels: int,
+        has_net_metering: bool = False,
+        has_time_stamp: bool = False,
+    ):
+        super().__init__(name, type, num_channels)
+
+        self.fields["header"] = NumericField(3, ByteOrder.HiToLo, Sign.Unsigned)
+        self.fields["voltage"] = FloatingPointField(
+            2, ByteOrder.HiToLo, Sign.Unsigned, 10.0
+        )
+        self.fields["absolute_watt_seconds"] = NumericArrayField(
+            num_channels, 5, ByteOrder.LoToHi, Sign.Unsigned
+        )
+        if has_net_metering:
+            self.fields["polarized_watt_seconds"] = NumericArrayField(
+                num_channels, 5, ByteOrder.LoToHi, Sign.Unsigned
+            )
+        self.fields["serial_number"] = NumericField(2, ByteOrder.HiToLo, Sign.Unsigned)
+        self.fields["reserved"] = ByteField()
+        self.fields["device_id"] = NumericField(1, ByteOrder.HiToLo, Sign.Unsigned)
+        self.fields["currents"] = FloatingPointArrayField(
+            num_channels, 2, ByteOrder.LoToHi, Sign.Unsigned, 50.0
+        )
+        self.fields["seconds"] = NumericField(3, ByteOrder.LoToHi, Sign.Unsigned)
+        self.fields["pulse_counts"] = NumericArrayField(
+            GEMPacketFormat.NUM_PULSE_COUNTERS, 3, ByteOrder.LoToHi, Sign.Unsigned
+        )
+        self.fields["temperatures"] = FloatingPointArrayField(
+            GEMPacketFormat.NUM_TEMPERATURE_SENSORS,
+            2,
+            ByteOrder.LoToHi,
+            Sign.Signed,
+            2.0,
+        )
+        if num_channels == 32:
+            self.fields["spare_bytes"] = BytesField(2)
+        if has_time_stamp:
+            self.fields["time_stamp"] = DateTimeField()
+        self.fields["footer"] = NumericField(2, ByteOrder.HiToLo, Sign.Unsigned)
+        self.fields["checksum"] = ByteField()
+
+
 def _checksum(packet: bytes, size: int):
     checksum = 0
     for i in packet[: size - 1]:
@@ -290,7 +300,7 @@ def _checksum(packet: bytes, size: int):
         )
 
 
-BIN48_NET_TIME = PacketFormat(
+BIN48_NET_TIME = GEMPacketFormat(
     name="BIN48-NET-TIME",
     type=PacketFormatType.BIN48_NET_TIME,
     num_channels=48,
@@ -298,7 +308,7 @@ BIN48_NET_TIME = PacketFormat(
     has_time_stamp=True,
 )
 
-BIN48_NET = PacketFormat(
+BIN48_NET = GEMPacketFormat(
     name="BIN48-NET",
     type=PacketFormatType.BIN48_NET,
     num_channels=48,
@@ -306,7 +316,7 @@ BIN48_NET = PacketFormat(
     has_time_stamp=False,
 )
 
-BIN48_ABS = PacketFormat(
+BIN48_ABS = GEMPacketFormat(
     name="BIN48-ABS",
     type=PacketFormatType.BIN48_ABS,
     num_channels=48,
@@ -314,7 +324,7 @@ BIN48_ABS = PacketFormat(
     has_time_stamp=False,
 )
 
-BIN32_NET = PacketFormat(
+BIN32_NET = GEMPacketFormat(
     name="BIN32-NET",
     type=PacketFormatType.BIN32_NET,
     num_channels=32,
@@ -322,7 +332,7 @@ BIN32_NET = PacketFormat(
     has_time_stamp=False,
 )
 
-BIN32_ABS = PacketFormat(
+BIN32_ABS = GEMPacketFormat(
     name="BIN32-ABS",
     type=PacketFormatType.BIN32_ABS,
     num_channels=32,
