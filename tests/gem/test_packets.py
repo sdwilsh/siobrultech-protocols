@@ -12,8 +12,8 @@ packet_maker = functools.partial(
     device_id=123456,
     serial_number=123456,
     seconds=0,
-    pulse_counts=[0] * packets.PacketFormat.NUM_PULSE_COUNTERS,
-    temperatures=[0] * packets.PacketFormat.NUM_TEMPERATURE_SENSORS,
+    pulse_counts=[0] * packets.GEMPacketFormat.NUM_PULSE_COUNTERS,
+    temperatures=[0] * packets.GEMPacketFormat.NUM_TEMPERATURE_SENSORS,
 )
 
 
