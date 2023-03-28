@@ -43,6 +43,8 @@ class Packet(object):
         polarized_watt_seconds: Optional[List[int]] = None,
         currents: Optional[List[float]] = None,
         time_stamp: Optional[datetime] = None,
+        aux: Optional[List[int]] = None,
+        dc_voltage: Optional[int] = None,
         **kwargs: Dict[str, Any],
     ):
         self.packet_format: PacketFormat = packet_format
@@ -59,6 +61,8 @@ class Packet(object):
             self.time_stamp: datetime = time_stamp
         else:
             self.time_stamp: datetime = datetime.now()
+        self.aux = aux
+        self.dc_voltage = dc_voltage
 
     def __str__(self) -> str:
         return json.dumps(
@@ -185,6 +189,8 @@ class Packet(object):
 
 @unique
 class PacketFormatType(IntEnum):
+    ECM_1220 = 1
+    ECM_1240 = 3
     BIN48_NET_TIME = 4
     BIN48_NET = 5
     BIN48_ABS = 7
@@ -237,6 +243,44 @@ class PacketFormat(object):
             )
 
         return Packet(**args)  # type: ignore
+
+
+class ECMPacketFormat(PacketFormat):
+    def __init__(
+        self,
+        name: str,
+        type: PacketFormatType,
+        has_aux_channels: bool = False,
+    ):
+        super().__init__(name, type, 2)
+
+        self.fields["header"] = NumericField(3, ByteOrder.HiToLo, Sign.Unsigned)
+        self.fields["voltage"] = FloatingPointField(
+            2, ByteOrder.HiToLo, Sign.Unsigned, 10.0
+        )
+        self.fields["absolute_watt_seconds"] = NumericArrayField(
+            self.num_channels, 5, ByteOrder.LoToHi, Sign.Unsigned
+        )
+        self.fields["polarized_watt_seconds"] = NumericArrayField(
+            self.num_channels, 5, ByteOrder.LoToHi, Sign.Unsigned
+        )
+        self.fields["reserved"] = BytesField(size=4)
+        self.fields["serial_number"] = NumericField(2, ByteOrder.HiToLo, Sign.Unsigned)
+        self.fields["flag"] = ByteField()
+        self.fields["device_id"] = NumericField(1, ByteOrder.HiToLo, Sign.Unsigned)
+        self.fields["currents"] = FloatingPointArrayField(
+            self.num_channels, 2, ByteOrder.LoToHi, Sign.Unsigned, 100.0
+        )
+        self.fields["seconds"] = NumericField(3, ByteOrder.LoToHi, Sign.Unsigned)
+        self.num_aux_channels = 0
+        if has_aux_channels:
+            self.num_aux_channels = 5
+            self.fields["aux"] = NumericArrayField(
+                self.num_aux_channels, 4, ByteOrder.LoToHi, Sign.Unsigned
+            )
+            self.fields["dc_voltage"] = NumericField(2, ByteOrder.LoToHi, Sign.Unsigned)
+        self.fields["footer"] = NumericField(2, ByteOrder.HiToLo, Sign.Unsigned)
+        self.fields["checksum"] = ByteField()
 
 
 class GEMPacketFormat(PacketFormat):
@@ -338,4 +382,12 @@ BIN32_ABS = GEMPacketFormat(
     num_channels=32,
     has_net_metering=False,
     has_time_stamp=False,
+)
+
+ECM_1240 = ECMPacketFormat(
+    name="ECM-1240", type=PacketFormatType.ECM_1240, has_aux_channels=True
+)
+
+ECM_1220 = ECMPacketFormat(
+    name="ECM-1220", type=PacketFormatType.ECM_1220, has_aux_channels=False
 )
