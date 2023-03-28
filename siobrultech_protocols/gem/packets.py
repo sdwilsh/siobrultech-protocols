@@ -38,8 +38,8 @@ class Packet(object):
         device_id: int,
         serial_number: int,
         seconds: int,
-        pulse_counts: List[int],
-        temperatures: List[float],
+        pulse_counts: Optional[List[int]] = None,
+        temperatures: Optional[List[float]] = None,
         polarized_watt_seconds: Optional[List[int]] = None,
         currents: Optional[List[float]] = None,
         time_stamp: Optional[datetime] = None,
@@ -53,8 +53,8 @@ class Packet(object):
         self.device_id: int = device_id
         self.serial_number: int = serial_number
         self.seconds: int = seconds
-        self.pulse_counts: List[int] = pulse_counts
-        self.temperatures: List[float] = temperatures
+        self.pulse_counts: List[int] = pulse_counts or []
+        self.temperatures: List[float] = temperatures or []
         if time_stamp:
             self.time_stamp: datetime = time_stamp
         else:
