@@ -779,6 +779,17 @@ PACKETS = {
         "time_stamp": datetime.datetime(2018, 6, 11, 21, 16, 58),
         "voltage": 122.2,
     },
+    "ECM-1240.bin": {
+        "absolute_watt_seconds": [3325793, 519631],
+        "polarized_watt_seconds": [3050305, 97838],
+        "currents": [0.21, 62.28],
+        "seconds": 9700,
+        "serial_number": 45569,
+        "device_id": 5,
+        "voltage": 128.8,
+        "aux": [70, 63, 65, 63, 65],
+        "dc_voltage": 511,
+    },
 }
 
 

@@ -48,6 +48,9 @@ class TestPacketFormats(unittest.TestCase):
 
         check_packet("BIN48-NET-TIME_tricky.bin", packets.BIN48_NET_TIME)
 
+    def test_ecm_1240(self):
+        check_packet("ECM-1240.bin", packets.ECM_1240)
+
     def test_short_packet(self):
         packet = read_packet("BIN32-NET.bin")
         with self.assertRaisesRegex(
