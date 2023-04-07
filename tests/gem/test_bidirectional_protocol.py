@@ -66,6 +66,18 @@ class TestBidirectionalProtocol(unittest.TestCase):
         self.assertEqual(response, "RESPONSE")
         self.assertPacket("BIN32-ABS.bin")
 
+    def testDeviceIgnoresApi(self):
+        """Tests that the protocol fails appropriately if a device ignores API calls and just keeps sending packets."""
+        self._protocol.begin_api_request()
+        self._protocol.data_received(read_packet("BIN32-ABS.bin"))
+        self._protocol.send_api_request("REQUEST")
+        self._protocol.data_received(read_packet("BIN32-ABS.bin"))
+        with self.assertRaises(UnicodeDecodeError):
+            self._protocol.receive_api_response()
+        self._protocol.end_api_request()
+
+        self.assertPacket("BIN32-ABS.bin")
+
     def testApiCallWithPacketInProgress(self):
         """Tests that the protocol can handle a packet that's partially arrived when it
         requested a packet delay from the GEM."""
