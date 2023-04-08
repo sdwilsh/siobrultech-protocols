@@ -170,6 +170,12 @@ class TestPacketDeltaComputation(unittest.TestCase):
 
 
 class TestPacketAverageComputation(unittest.TestCase):
+    def test_packet_average_power_no_time_passed(self):
+        packet_a = packet_maker(
+            absolute_watt_seconds=[10] * packets.BIN32_ABS.num_channels,
+        )
+        self.assertEqual(packet_a.get_average_power(0, packet_a), 0)
+
     def test_packet_average_power(self):
         packet_a = packet_maker(
             absolute_watt_seconds=[10] * packets.BIN32_ABS.num_channels,
@@ -222,6 +228,12 @@ class TestPacketAverageComputation(unittest.TestCase):
         self.assertEqual(packet_a.get_average_pulse_rate(0, packet_b), 1.5)
         self.assertEqual(packet_b.get_average_pulse_rate(0, packet_a), 1.5)
 
+    def test_pulse_rate_no_time_passed(self):
+        packet_a = packet_maker(
+            pulse_counts=[0] * packets.BIN32_ABS.NUM_PULSE_COUNTERS,
+        )
+        self.assertEqual(packet_a.get_average_pulse_rate(0, packet_a), 0)
+
     def test_aux_rate(self):
         packet_a = packet_maker(
             packet_format=packets.ECM_1240, aux=[0] * packets.ECM_1240.num_aux_channels
@@ -233,6 +245,12 @@ class TestPacketAverageComputation(unittest.TestCase):
         )
         self.assertEqual(packet_a.get_average_aux_rate_of_change(0, packet_b), 1.5)
         self.assertEqual(packet_b.get_average_aux_rate_of_change(0, packet_a), 1.5)
+
+    def test_aux_rate_no_time_passed(self):
+        packet_a = packet_maker(
+            packet_format=packets.ECM_1240, aux=[0] * packets.ECM_1240.num_aux_channels
+        )
+        self.assertEqual(packet_a.get_average_aux_rate_of_change(0, packet_a), 0)
 
 
 def check_packet(packet_file_name: str, packet_format: packets.PacketFormat):
