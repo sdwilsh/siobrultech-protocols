@@ -61,7 +61,7 @@ class Packet(object):
             self.time_stamp: datetime = time_stamp
         else:
             self.time_stamp: datetime = datetime.now()
-        self.aux = aux
+        self.aux: List[int] = aux or []
         self.dc_voltage = dc_voltage
 
     def __str__(self) -> str:
@@ -99,6 +99,11 @@ class Packet(object):
         field = self.packet_format.fields["pulse_counts"]
         assert isinstance(field, NumericArrayField)
         return self._delta_value(field.elem_field, self.pulse_counts[index], prev)
+
+    def delta_aux_count(self, index: int, prev: int) -> int:
+        field = self.packet_format.fields["aux"]
+        assert isinstance(field, NumericArrayField)
+        return self._delta_value(field.elem_field, self.aux[index], prev)
 
     def delta_absolute_watt_seconds(self, index: int, prev: int) -> int:
         field = self.packet_format.fields["absolute_watt_seconds"]
@@ -183,6 +188,15 @@ class Packet(object):
 
         return (
             newest_packet.delta_pulse_count(index, oldest_packet.pulse_counts[index])
+            / elapsed_seconds
+        )
+
+    def get_average_aux_rate_of_change(self, index: int, other_packet: Packet) -> float:
+        oldest_packet, newest_packet = self._packets_sorted(self, other_packet)
+        elapsed_seconds = newest_packet.delta_seconds(oldest_packet.seconds)
+
+        return (
+            newest_packet.delta_aux_count(index, oldest_packet.aux[index])
             / elapsed_seconds
         )
 

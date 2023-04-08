@@ -14,6 +14,7 @@ packet_maker = functools.partial(
     seconds=0,
     pulse_counts=[0] * packets.GEMPacketFormat.NUM_PULSE_COUNTERS,
     temperatures=[0] * packets.GEMPacketFormat.NUM_TEMPERATURE_SENSORS,
+    aux=None,
 )
 
 
@@ -87,6 +88,14 @@ class TestPacketDeltaComputation(unittest.TestCase):
                 packet.delta_pulse_count(i, 2**24 - 1000)
                 for i in range(0, len(packet.pulse_counts))
             ],
+        )
+
+    def test_packet_delta_aux(self):
+        packet = parse_packet("ECM-1240.bin", packets.ECM_1240)
+
+        self.assertEqual(
+            [10, 3, 5, 3, 5],
+            [packet.delta_aux_count(i, 60) for i in range(0, len(packet.aux))],
         )
 
     def test_packet_delta_absolute_watt_seconds(self):
@@ -212,6 +221,18 @@ class TestPacketAverageComputation(unittest.TestCase):
         )
         self.assertEqual(packet_a.get_average_pulse_rate(0, packet_b), 1.5)
         self.assertEqual(packet_b.get_average_pulse_rate(0, packet_a), 1.5)
+
+    def test_aux_rate(self):
+        packet_a = packet_maker(
+            packet_format=packets.ECM_1240, aux=[0] * packets.ECM_1240.num_aux_channels
+        )
+        packet_b = packet_maker(
+            packet_format=packets.ECM_1240,
+            aux=[15] * packets.ECM_1240.num_aux_channels,
+            seconds=10,
+        )
+        self.assertEqual(packet_a.get_average_aux_rate_of_change(0, packet_b), 1.5)
+        self.assertEqual(packet_b.get_average_aux_rate_of_change(0, packet_a), 1.5)
 
 
 def check_packet(packet_file_name: str, packet_format: packets.PacketFormat):
