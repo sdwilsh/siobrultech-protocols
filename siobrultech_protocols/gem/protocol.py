@@ -327,6 +327,7 @@ class BidirectionalProtocol(PacketProtocol):
         self._expect_state(
             {
                 ProtocolState.RECEIVED_API_RESPONSE,
+                ProtocolState.SENT_API_REQUEST,
                 ProtocolState.SENT_PACKET_DELAY_REQUEST,
             }
         )
