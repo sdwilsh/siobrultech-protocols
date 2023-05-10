@@ -297,6 +297,7 @@ class BidirectionalProtocol(PacketProtocol):
         self,
         queue: asyncio.Queue[PacketProtocolMessage],
         packet_delay_clear_time: timedelta = PACKET_DELAY_CLEAR_TIME_DEFAULT,
+        send_packet_delay: bool = True,
     ):
         # Ensure that the clear time and the response wait time fit within the 15 second packet delay interval that is requested.
         assert (packet_delay_clear_time + API_RESPONSE_WAIT_TIME) < timedelta(
@@ -305,6 +306,7 @@ class BidirectionalProtocol(PacketProtocol):
 
         super().__init__(queue)
         self._api_buffer = bytearray()
+        self._send_packet_delay = send_packet_delay
         self._packet_delay_clear_time = packet_delay_clear_time
         self._state = ProtocolState.RECEIVING_PACKETS
         self._api_call: ApiCall[Any, Any] | None = None
@@ -338,13 +340,15 @@ class BidirectionalProtocol(PacketProtocol):
         """
         self._expect_state(ProtocolState.RECEIVING_PACKETS)
 
-        LOG.debug("%d: Starting API request. Requesting packet delay...", id(self))
-        self._ensure_write_transport().write(
-            CMD_DELAY_NEXT_PACKET.encode()
-        )  # Delay packets for 15 seconds
         self._state = ProtocolState.SENT_PACKET_DELAY_REQUEST
-
-        return self._packet_delay_clear_time
+        if self._send_packet_delay:
+            LOG.debug("%d: Starting API request. Requesting packet delay...", id(self))
+            self._ensure_write_transport().write(
+                CMD_DELAY_NEXT_PACKET.encode()
+            )  # Delay packets for 15 seconds
+            return self._packet_delay_clear_time
+        else:
+            return timedelta(seconds=0)
 
     def invoke_api(
         self,
