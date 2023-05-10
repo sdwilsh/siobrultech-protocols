@@ -88,108 +88,103 @@ class PacketProtocol(asyncio.Protocol):
         LOG.debug("%d: Received %d bytes", id(self), len(data))
         self._buffer.extend(data)
         try:
-            packet = self._get_packet()
-            while packet is not None:
-                self._queue.put_nowait(
-                    PacketReceivedMessage(protocol=self, packet=packet)
-                )
-                packet = self._get_packet()
+            should_continue = True
+            while should_continue:
+                should_continue = self._process_buffer()
+                self._ensure_transport()
         except Exception:
             LOG.exception("%d: Exception while attempting to parse a packet.", id(self))
 
-    def _get_packet(self) -> Optional[Packet]:
+    def _process_buffer(self) -> bool:
         """
-        Returns a full packet if available.
+        Processes one item in the buffer.
+
+        Returns True if there might be more items in the buffer.
         """
-        while len(self._buffer) > 0:
 
-            def skip_malformed_packet(msg: str, *args: Any, **kwargs: Any):
-                LOG.debug(
-                    "%d Skipping malformed packet due to "
-                    + msg
-                    + ". Buffer contents: %s",
-                    id(self),
-                    *args,
-                    self._buffer,
-                )
-                del self._buffer[0 : len(PACKET_HEADER)]
+        def skip_malformed_packet(msg: str, *args: Any, **kwargs: Any):
+            LOG.debug(
+                "%d Skipping malformed packet due to " + msg + ". Buffer contents: %s",
+                id(self),
+                *args,
+                self._buffer,
+            )
+            del self._buffer[0 : len(PACKET_HEADER)]
 
-            header_index = self._buffer.find(PACKET_HEADER)
-            if header_index == -1:
-                LOG.debug(
-                    "%d: No header found. Discarding junk data: %s",
-                    id(self),
-                    self._buffer,
-                )
-                self._buffer.clear()
-                continue
-            del self._buffer[0:header_index]
+        header_index = self._buffer.find(PACKET_HEADER)
+        if header_index == -1:
+            LOG.debug(
+                "%d: No header found. Discarding junk data: %s",
+                id(self),
+                self._buffer,
+            )
+            self._buffer.clear()
+            return False
+        del self._buffer[0:header_index]
 
-            if len(self._buffer) < len(PACKET_HEADER) + 1:
-                # Not enough length yet
-                LOG.debug(
-                    "%d: Not enough data in buffer yet (%d bytes): %s",
-                    id(self),
-                    len(self._buffer),
-                    self._buffer,
-                )
-                return None
+        if len(self._buffer) < len(PACKET_HEADER) + 1:
+            # Not enough length yet
+            LOG.debug(
+                "%d: Not enough data in buffer yet (%d bytes): %s",
+                id(self),
+                len(self._buffer),
+                self._buffer,
+            )
+            return False
 
-            format_code = self._buffer[len(PACKET_HEADER)]
-            if format_code == 8:
-                packet_format = BIN32_ABS
-            elif format_code == 7:
-                packet_format = BIN32_NET
-            elif format_code == 6:
-                packet_format = BIN48_ABS
-            elif format_code == 5:
-                packet_format = BIN48_NET
-            elif format_code == 3:
-                packet_format = ECM_1240
-            elif format_code == 1:
-                packet_format = ECM_1220
-            else:
-                skip_malformed_packet("unknown format code 0x%x", format_code)
-                continue
+        format_code = self._buffer[len(PACKET_HEADER)]
+        if format_code == 8:
+            packet_format = BIN32_ABS
+        elif format_code == 7:
+            packet_format = BIN32_NET
+        elif format_code == 6:
+            packet_format = BIN48_ABS
+        elif format_code == 5:
+            packet_format = BIN48_NET
+        elif format_code == 3:
+            packet_format = ECM_1240
+        elif format_code == 1:
+            packet_format = ECM_1220
+        else:
+            skip_malformed_packet("unknown format code 0x%x", format_code)
+            return False
 
-            if len(self._buffer) < packet_format.size:
-                # Not enough length yet
-                LOG.debug(
-                    "%d: Not enough data in buffer yet (%d bytes)",
-                    id(self),
-                    len(self._buffer),
-                )
-                return None
+        if len(self._buffer) < packet_format.size:
+            # Not enough length yet
+            LOG.debug(
+                "%d: Not enough data in buffer yet (%d bytes)",
+                id(self),
+                len(self._buffer),
+            )
+            return False
 
+        try:
+            packet = None
             try:
-                result = None
-                try:
-                    result = packet_format.parse(self._buffer)
-                except MalformedPacketException:
-                    if packet_format != BIN48_NET:
-                        raise
+                packet = packet_format.parse(self._buffer)
+            except MalformedPacketException:
+                if packet_format != BIN48_NET:
+                    raise
 
-                if result is None:
-                    if len(self._buffer) < BIN48_NET_TIME.size:
-                        # Not enough length yet
-                        LOG.debug(
-                            "%d: Not enough data in buffer yet (%d bytes)",
-                            id(self),
-                            len(self._buffer),
-                        )
-                        return None
+            if packet is None:
+                if len(self._buffer) < BIN48_NET_TIME.size:
+                    # Not enough length yet
+                    LOG.debug(
+                        "%d: Not enough data in buffer yet (%d bytes)",
+                        id(self),
+                        len(self._buffer),
+                    )
+                    return False
 
-                    result = BIN48_NET_TIME.parse(self._buffer)
+                packet = BIN48_NET_TIME.parse(self._buffer)
 
-                LOG.debug(
-                    "%d: Parsed one %s packet.", id(self), result.packet_format.name
-                )
-                del self._buffer[0 : result.packet_format.size]
-                return result
-            except MalformedPacketException as e:
-                skip_malformed_packet(e.args[0])
+            LOG.debug("%d: Parsed one %s packet.", id(self), packet.packet_format.name)
+            del self._buffer[0 : packet.packet_format.size]
+            self._queue.put_nowait(PacketReceivedMessage(protocol=self, packet=packet))
+        except MalformedPacketException as e:
+            skip_malformed_packet(e.args[0])
 
-        self._ensure_transport()
+        return len(self._buffer) > 0
 
     def _ensure_transport(self) -> asyncio.BaseTransport:
         if not self._transport:
