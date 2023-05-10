@@ -97,12 +97,6 @@ class PacketProtocol(asyncio.Protocol):
         except Exception:
             LOG.exception("%d: Exception while attempting to parse a packet.", id(self))
 
-    def close(self) -> None:
-        """Closes the underlying transport, if any."""
-        if self._transport:
-            self._transport.close()
-        self._transport = None
-
     def _get_packet(self) -> Optional[Packet]:
         """
         Returns a full packet if available.

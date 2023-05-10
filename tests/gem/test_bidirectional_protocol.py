@@ -32,12 +32,6 @@ class TestBidirectionalProtocol(unittest.TestCase):
             assert isinstance(message, ConnectionLostMessage)
             assert message.protocol is self._protocol
             assert message.exc is exc
-        self._protocol.close()  # Close after connection_lost is not required, but at least should not crash
-
-    def testClose(self):
-        self._protocol.close()
-
-        assert self._transport.closed
 
     def testBeginApi(self):
         self._protocol.begin_api_request()
