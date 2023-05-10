@@ -103,24 +103,22 @@ class PacketProtocol(asyncio.Protocol):
         """
 
         def skip_malformed_packet(msg: str, *args: Any, **kwargs: Any):
+            header_index = self._buffer.find(PACKET_HEADER, 1)
+            end = header_index if header_index != -1 else len(self._buffer)
             LOG.debug(
                 "%d Skipping malformed packet due to " + msg + ". Buffer contents: %s",
                 id(self),
                 *args,
-                self._buffer,
+                self._buffer[0:end],
             )
-            del self._buffer[0 : len(PACKET_HEADER)]
+            del self._buffer[0:end]
 
         header_index = self._buffer.find(PACKET_HEADER)
-        if header_index == -1:
-            LOG.debug(
-                "%d: No header found. Discarding junk data: %s",
-                id(self),
-                self._buffer,
-            )
-            self._buffer.clear()
-            return False
-        del self._buffer[0:header_index]
+        if header_index != 0:
+            end = header_index if header_index != -1 else len(self._buffer)
+            self.unknown_data_received(self._buffer[0:end])
+            del self._buffer[0:end]
+            return len(self._buffer) > 0
 
         if len(self._buffer) < len(PACKET_HEADER) + 1:
             # Not enough length yet
@@ -147,7 +145,7 @@ class PacketProtocol(asyncio.Protocol):
             packet_format = ECM_1220
         else:
             skip_malformed_packet("unknown format code 0x%x", format_code)
-            return False
+            return len(self._buffer) > 0
 
         if len(self._buffer) < packet_format.size:
             # Not enough length yet
@@ -185,6 +183,13 @@ class PacketProtocol(asyncio.Protocol):
             skip_malformed_packet(e.args[0])
 
         return len(self._buffer) > 0
+
+    def unknown_data_received(self, data: bytes) -> None:
+        LOG.debug(
+            "%d: No header found. Discarding junk data: %s",
+            id(self),
+            data,
+        )
 
     def _ensure_transport(self) -> asyncio.BaseTransport:
         if not self._transport:
@@ -253,12 +258,11 @@ class BidirectionalProtocol(PacketProtocol):
     def packet_delay_clear_time(self) -> timedelta:
         return self._packet_delay_clear_time
 
-    def data_received(self, data: bytes) -> None:
+    def unknown_data_received(self, data: bytes) -> None:
         if self._state == ProtocolState.SENT_API_REQUEST:
-            LOG.debug("%d: Received %d bytes", id(self), len(data))
             self._api_buffer.extend(data)
         else:
-            super().data_received(data)
+            super().unknown_data_received(data)
 
     def begin_api_request(self) -> timedelta:
         """
@@ -302,6 +306,8 @@ class BidirectionalProtocol(PacketProtocol):
         """
         self._expect_state(ProtocolState.SENT_API_REQUEST)
 
+        if len(self._api_buffer) == 0:
+            raise TimeoutError()
         response = bytes(self._api_buffer).decode()
         LOG.debug("%d: Received API response: '%s'", id(self), response)
         self._state = ProtocolState.RECEIVED_API_RESPONSE
