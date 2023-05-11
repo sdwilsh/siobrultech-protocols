@@ -45,6 +45,11 @@ class TestApi(IsolatedAsyncioTestCase):
         self._protocol.begin_api_request()
         self._transport.writes.clear()
 
+    async def testApiCallWithoutResponse(self):
+        call = ApiCall(lambda _: "REQUEST", None)
+
+        await self.assertCall(call, "REQUEST", None, None, None, None)
+
     async def testApiCall(self):
         call = ApiCall(lambda _: "REQUEST", lambda response: response)
 
@@ -123,8 +128,8 @@ class TestApi(IsolatedAsyncioTestCase):
         request: str,
         arg: T,
         serial_number: Optional[int],
-        encoded_response: bytes,
-        parsed_response: R,
+        encoded_response: bytes | None,
+        parsed_response: R | None,
     ):
         result = asyncio.get_event_loop().create_future()
         self._protocol.invoke_api(call, arg, result, serial_number)
@@ -133,7 +138,8 @@ class TestApi(IsolatedAsyncioTestCase):
             [request.encode()],
             f"{request.encode()} should be written to the transport",
         )
-        self._protocol.data_received(encoded_response)
+        if encoded_response is not None:
+            self._protocol.data_received(encoded_response)
         result = await asyncio.wait_for(result, 0)
         self.assertEqual(
             result,
