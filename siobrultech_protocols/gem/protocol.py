@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections import deque
 from dataclasses import dataclass
 from datetime import timedelta
 from enum import Enum, unique
-from typing import Any, Optional, Set, Union
+from typing import Any, Callable, Deque, Generic, List, Optional, Set, TypeVar, Union
 
-from .const import CMD_DELAY_NEXT_PACKET, PACKET_DELAY_CLEAR_TIME_DEFAULT
+from .const import (
+    CMD_DELAY_NEXT_PACKET,
+    ESCAPE_SEQUENCE,
+    PACKET_DELAY_CLEAR_TIME_DEFAULT,
+    TARGET_SERIAL_NUMBER_PREFIX,
+)
 from .packets import (
     BIN32_ABS,
     BIN32_NET,
@@ -18,6 +24,7 @@ from .packets import (
     ECM_1240,
     MalformedPacketException,
     Packet,
+    PacketFormatType,
 )
 
 LOG = logging.getLogger(__name__)
@@ -69,6 +76,7 @@ class PacketProtocol(asyncio.Protocol):
         self._buffer = bytearray()
         self._queue = queue
         self._transport: Optional[asyncio.BaseTransport] = None
+        self._packet_type: PacketFormatType | None = None
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         LOG.info("%d: Connection opened", id(self))
@@ -184,6 +192,7 @@ class PacketProtocol(asyncio.Protocol):
 
                 packet = BIN48_NET_TIME.parse(self._buffer)
 
+            self._packet_type = packet.packet_format.type
             LOG.debug("%d: Parsed one %s packet.", id(self), packet.packet_format.name)
             del self._buffer[0 : packet.packet_format.size]
             self._queue.put_nowait(PacketReceivedMessage(protocol=self, packet=packet))
@@ -210,8 +219,9 @@ class PacketProtocol(asyncio.Protocol):
 class ProtocolState(Enum):
     RECEIVING_PACKETS = 1  # Receiving packets from the GEM
     SENT_PACKET_DELAY_REQUEST = 2  #  Sent the packet delay request prior to an API request, waiting for any in-flight packets
-    SENT_API_REQUEST = 3  # Sent an API request, waiting for a response
-    RECEIVED_API_RESPONSE = 4  # Received an API response, waiting for end call
+    SENDING_API_REQUEST = 3  # Sending a multi-part request
+    SENT_API_REQUEST = 4  # Sent an API request, waiting for a response
+    RECEIVED_API_RESPONSE = 5  # Received an API response, waiting for end call
 
 
 class ProtocolStateException(Exception):
@@ -237,6 +247,85 @@ class ProtocolStateException(Exception):
         return f"Expected state to be {expected_str}; but got {self._actual.name}!"
 
 
+# Argument type of an ApiCall.
+T = TypeVar("T")
+# Return type of an ApiCall response parser.
+R = TypeVar("R")
+
+
+class ApiType(Enum):
+    ECM = 1
+    GEM = 2
+
+
+@dataclass
+class ApiCall(Generic[T, R]):
+    """
+    Helper class for making API calls with BidirectionalProtocol. There is one instance of
+    this class for each supported API call. This class handles the send_api_request and
+    receive_api_response parts of driving the protocol, since those are specific to each API
+    request type.
+    """
+
+    def __init__(
+        self,
+        gem_formatter: Callable[[T], str],
+        gem_parser: Callable[[str], R | None] | None,
+        ecm_formatter: Callable[[T], List[bytes]] | None,
+        ecm_parser: Callable[[bytes], R | None] | None,
+    ) -> None:
+        """
+        Create a new APICall.
+
+        gem_formatter - a callable that, given a parameter of type T, returns the string to send to the GEM to make the API call
+        gem_parser - a callable that, given a string, parses it into a value of type R.
+                    If there is not enough data to parse yet, it should return None.
+                    If there is enough data to parse, but it is malformed, it should raise an Exception.
+        ecm_formatter - a callable that, given a parameter of type T, returns the series of bytes chunks to send to the ECM to make the API call
+        ecm_parser - a callable that, given a bytes, parses it into a value of type R.
+                    If there is not enough data to parse yet, it should return None.
+                    If there is enough data to parse, but it is malformed, it should raise an Exception.
+        """
+        self._gem_formatter = gem_formatter
+        self._gem_parser = gem_parser
+        self._ecm_formatter = ecm_formatter
+        self._ecm_parser = ecm_parser
+
+    def format(
+        self,
+        api_type: ApiType,
+        arg: T,
+        serial_number: int | None,
+    ) -> List[bytes]:
+        if api_type == ApiType.GEM:
+            result = self._gem_formatter(arg)
+            if serial_number:
+                result = result.replace(
+                    ESCAPE_SEQUENCE,
+                    f"{TARGET_SERIAL_NUMBER_PREFIX}{serial_number%100000:05}",
+                )
+
+            return [result.encode()]
+        else:
+            assert self._ecm_formatter
+            result = self._ecm_formatter(arg)
+            return result
+
+    def has_parser(self, api_type: ApiType) -> bool:
+        if api_type == ApiType.GEM:
+            return self._gem_parser is not None
+        else:
+            return self._ecm_parser is not None
+
+    def parse(self, api_type: ApiType, response: bytes) -> R | None:
+        if api_type == ApiType.GEM and self._gem_parser:
+            return self._gem_parser(response.decode())
+        elif api_type == ApiType.ECM and self._ecm_parser:
+            return self._ecm_parser(response)
+        else:
+            return None
+
+
 class BidirectionalProtocol(PacketProtocol):
     """Protocol implementation for bi-directional communication with a GreenEye Monitor."""
 
@@ -251,6 +340,8 @@ class BidirectionalProtocol(PacketProtocol):
         self,
         queue: asyncio.Queue[PacketProtocolMessage],
         packet_delay_clear_time: timedelta = PACKET_DELAY_CLEAR_TIME_DEFAULT,
+        send_packet_delay: bool = True,
+        api_type: ApiType | None = None,
     ):
         # Ensure that the clear time and the response wait time fit within the 15 second packet delay interval that is requested.
         assert (packet_delay_clear_time + API_RESPONSE_WAIT_TIME) < timedelta(
@@ -259,17 +350,74 @@ class BidirectionalProtocol(PacketProtocol):
 
         super().__init__(queue)
         self._api_buffer = bytearray()
+        self._send_packet_delay = send_packet_delay
         self._packet_delay_clear_time = packet_delay_clear_time
         self._state = ProtocolState.RECEIVING_PACKETS
+        self._api_call: ApiCall[Any, Any] | None = None
+        self._api_result: asyncio.Future[Any] | None = None
+        self._api_type = api_type
+        self._api_requests: Deque[bytes] = deque()
 
     @property
     def packet_delay_clear_time(self) -> timedelta:
         return self._packet_delay_clear_time
 
+    @property
+    def api_type(self) -> ApiType:
+        if self._api_type is None:
+            if (
+                self._packet_type == PacketFormatType.ECM_1220
+                or self._packet_type == PacketFormatType.ECM_1240
+            ):
+                self._api_type = ApiType.ECM
+            elif self._packet_type:
+                self._api_type = ApiType.GEM
+
+        result = self._api_type
+        assert result
+        return result
+
     def unknown_data_received(self, data: bytes) -> None:
+        if self._state == ProtocolState.SENDING_API_REQUEST:
+            # We're in the middle of an ECM API call, which
+            # has multiple roundtrips to send all the request chunks
+            assert self._api_call
+            if data.startswith(b"\xfc"):
+                # ECM acks each chunk with \xfc
+                if len(self._api_requests) > 0:
+                    self._send_next_api_request_chunk()
+                else:
+                    # No more chunks means that we've now completely sent the request
+                    self._state = ProtocolState.SENT_API_REQUEST
+
+                    if self._api_call.has_parser(self.api_type):
+                        # This API call is expecting a response, and
+                        # the ACK character might be immediately followed
+                        # by response data, so we pull off the ACK character
+                        # and fall through to the rest of the method,
+                        # which then pulls the response from the data
+                        data = data[1:]
+                    else:
+                        # Last ACK of a request with no response
+                        self._set_result(result=None)
+            else:
+                self._set_result(
+                    exception=Exception("Bad response from device: {data}")
+                )
+
         if self._state == ProtocolState.SENT_API_REQUEST:
+            assert self._api_call is not None
             self._api_buffer.extend(data)
-        else:
+
+            response = bytes(self._api_buffer)
+            LOG.debug("%d: Attempting to parse API response: %s", id(self), response)
+
+            result = self._api_call.parse(self.api_type, response)
+            if result:
+                if self.api_type == ApiType.ECM:
+                    self._ensure_write_transport().write(b"\xfc")
+                self._set_result(result=result)
+        elif self._state == ProtocolState.RECEIVING_PACKETS:
             super().unknown_data_received(data)
 
     def begin_api_request(self) -> timedelta:
@@ -282,15 +430,23 @@ class BidirectionalProtocol(PacketProtocol):
         """
         self._expect_state(ProtocolState.RECEIVING_PACKETS)
 
-        LOG.debug("%d: Starting API request. Requesting packet delay...", id(self))
-        self._ensure_write_transport().write(
-            CMD_DELAY_NEXT_PACKET.encode()
-        )  # Delay packets for 15 seconds
         self._state = ProtocolState.SENT_PACKET_DELAY_REQUEST
+        if self.api_type == ApiType.GEM and self._send_packet_delay:
+            LOG.debug("%d: Starting API request. Requesting packet delay...", id(self))
+            self._ensure_write_transport().write(
+                CMD_DELAY_NEXT_PACKET.encode()
+            )  # Delay packets for 15 seconds
+            return self._packet_delay_clear_time
+        else:
+            return timedelta(seconds=0)
 
-        return self._packet_delay_clear_time
-
-    def send_api_request(self, request: str) -> timedelta:
+    def invoke_api(
+        self,
+        api: ApiCall[T, R],
+        arg: T,
+        result: asyncio.Future[R],
+        serial_number: Optional[int] = None,
+    ) -> None:
         """
         Send the given API request, after having called begin_api_request.
 
@@ -299,28 +455,57 @@ class BidirectionalProtocol(PacketProtocol):
         Returns a timedelta. Callers must wait for that amount of time, then call receive_api_response to receive the response.
         """
         self._expect_state(ProtocolState.SENT_PACKET_DELAY_REQUEST)
+        assert len(self._api_requests) == 0
 
-        LOG.debug("%d: Sending API request '%s'...", id(self), request)
-        self._ensure_write_transport().write(request.encode())
-        self._state = ProtocolState.SENT_API_REQUEST
+        self._api_call = api
+        self._api_result = result
+        self._api_requests.extend(api.format(self.api_type, arg, serial_number))
 
-        return API_RESPONSE_WAIT_TIME
+        self._send_next_api_request_chunk()
 
-    def receive_api_response(self) -> str:
-        """
-        Returns the bytes that were received in response to a call to send_api_request.
+    def _send_next_api_request_chunk(self) -> None:
+        assert len(self._api_requests) > 0
+        assert self._api_call
+        assert self._api_result
 
-        Callers must call end_api_request after this call.
-        """
-        self._expect_state(ProtocolState.SENT_API_REQUEST)
+        request = self._api_requests.popleft()
+        LOG.debug("%d: Sending API request %s...", id(self), request)
+        self._ensure_write_transport().write(request)
+        self._state = (
+            ProtocolState.SENT_API_REQUEST
+            if self.api_type == ApiType.GEM
+            else ProtocolState.SENDING_API_REQUEST
+        )
+        if (
+            not self._api_call.has_parser(self.api_type)
+            and self.api_type == ApiType.GEM
+        ):
+            # GEM API calls without a response are just a single send and you're done
+            # (ECM API calls without a response still have multiple request chunks to send,
+            # and even the last chunk is still acked with \xfc, so we don't advance the
+            # state for them here)
+            assert len(self._api_requests) == 0
+            self._set_result(result=None)
 
-        if len(self._api_buffer) == 0:
-            raise TimeoutError()
-        response = bytes(self._api_buffer).decode()
-        LOG.debug("%d: Received API response: '%s'", id(self), response)
-        self._state = ProtocolState.RECEIVED_API_RESPONSE
+    def _set_result(
+        self, result: Any | None = None, exception: Exception | None = None
+    ) -> None:
+        assert (
+            self._state == ProtocolState.SENT_API_REQUEST
+            or self._state == ProtocolState.SENDING_API_REQUEST
+        )
+        assert self._api_result
+        assert not self._api_result.done()
 
-        return response
+        if exception is None:
+            self._state = ProtocolState.RECEIVED_API_RESPONSE
+            self._api_result.set_result(result)
+        else:
+            assert result is None
+            # self._api_requests.clear()
+            self._api_result.set_exception(exception)
+        self._api_result = None
+        self._api_call = None
 
     def end_api_request(self) -> None:
         """
@@ -330,11 +515,15 @@ class BidirectionalProtocol(PacketProtocol):
         self._expect_state(
             {
                 ProtocolState.RECEIVED_API_RESPONSE,
+                ProtocolState.SENDING_API_REQUEST,
                 ProtocolState.SENT_API_REQUEST,
                 ProtocolState.SENT_PACKET_DELAY_REQUEST,
             }
         )
         self._api_buffer.clear()
+        self._api_call = None
+        self._api_requests.clear()
+        self._api_result = None
         LOG.debug("%d: Ended API request", id(self))
         self._state = ProtocolState.RECEIVING_PACKETS
 
