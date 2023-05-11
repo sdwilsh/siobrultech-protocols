@@ -5,9 +5,14 @@ import logging
 from dataclasses import dataclass
 from datetime import timedelta
 from enum import Enum, unique
-from typing import Any, Optional, Set, Union
+from typing import Any, Callable, Generic, Optional, Set, TypeVar, Union
 
-from .const import CMD_DELAY_NEXT_PACKET, PACKET_DELAY_CLEAR_TIME_DEFAULT
+from .const import (
+    CMD_DELAY_NEXT_PACKET,
+    ESCAPE_SEQUENCE,
+    PACKET_DELAY_CLEAR_TIME_DEFAULT,
+    TARGET_SERIAL_NUMBER_PREFIX,
+)
 from .packets import (
     BIN32_ABS,
     BIN32_NET,
@@ -229,6 +234,48 @@ class ProtocolStateException(Exception):
         return f"Expected state to be {expected_str}; but got {self._actual.name}!"
 
 
+# Argument type of an ApiCall.
+T = TypeVar("T")
+# Return type of an ApiCall response parser.
+R = TypeVar("R")
+
+
+@dataclass
+class ApiCall(Generic[T, R]):
+    """
+    Helper class for making API calls with BidirectionalProtocol. There is one instance of
+    this class for each supported API call. This class handles the send_api_request and
+    receive_api_response parts of driving the protocol, since those are specific to each API
+    request type.
+    """
+
+    def __init__(
+        self, formatter: Callable[[T], str], parser: Callable[[str], R | None]
+    ) -> None:
+        """
+        Create a new APICall.
+
+        formatter - a callable that, given a parameter of type T, returns the string to send to the GEM to make the API call
+        parser - a callable that, given a string, parses it into a value of type R.
+                If there is not enough data to parse yet, it should return None.
+                If there is enough data to parse, but it is malformed, it should raise an Exception."""
+        self._formatter = formatter
+        self._parser = parser
+
+    def format(self, arg: T, serial_number: int | None) -> str:
+        result = self._formatter(arg)
+        if serial_number:
+            result = result.replace(
+                ESCAPE_SEQUENCE,
+                f"{TARGET_SERIAL_NUMBER_PREFIX}{serial_number%100000:05}",
+            )
+
+        return result
+
+    def parse(self, response: str) -> R | None:
+        return self._parser(response)
+
+
 class BidirectionalProtocol(PacketProtocol):
     """Protocol implementation for bi-directional communication with a GreenEye Monitor."""
 
@@ -253,6 +300,8 @@ class BidirectionalProtocol(PacketProtocol):
         self._api_buffer = bytearray()
         self._packet_delay_clear_time = packet_delay_clear_time
         self._state = ProtocolState.RECEIVING_PACKETS
+        self._api_call: ApiCall[Any, Any] | None = None
+        self._api_result: asyncio.Future[Any] | None = None
 
     @property
     def packet_delay_clear_time(self) -> timedelta:
@@ -260,7 +309,15 @@ class BidirectionalProtocol(PacketProtocol):
 
     def unknown_data_received(self, data: bytes) -> None:
         if self._state == ProtocolState.SENT_API_REQUEST:
+            assert self._api_call is not None
             self._api_buffer.extend(data)
+
+            response = bytes(self._api_buffer).decode()
+            LOG.debug("%d: Attempting to parse API response: '%s'", id(self), response)
+
+            result = self._api_call.parse(response)
+            if result:
+                self._set_result(result)
         else:
             super().unknown_data_received(data)
 
@@ -282,7 +339,13 @@ class BidirectionalProtocol(PacketProtocol):
 
         return self._packet_delay_clear_time
 
-    def send_api_request(self, request: str) -> timedelta:
+    def invoke_api(
+        self,
+        api: ApiCall[T, R],
+        arg: T,
+        result: asyncio.Future[R],
+        serial_number: Optional[int] = None,
+    ) -> None:
         """
         Send the given API request, after having called begin_api_request.
 
@@ -292,27 +355,21 @@ class BidirectionalProtocol(PacketProtocol):
         """
         self._expect_state(ProtocolState.SENT_PACKET_DELAY_REQUEST)
 
+        self._api_call = api
+        self._api_result = result
+        request = api.format(arg, serial_number)
+
         LOG.debug("%d: Sending API request '%s'...", id(self), request)
         self._ensure_write_transport().write(request.encode())
         self._state = ProtocolState.SENT_API_REQUEST
 
-        return API_RESPONSE_WAIT_TIME
-
-    def receive_api_response(self) -> str:
-        """
-        Returns the bytes that were received in response to a call to send_api_request.
-
-        Callers must call end_api_request after this call.
-        """
-        self._expect_state(ProtocolState.SENT_API_REQUEST)
-
-        if len(self._api_buffer) == 0:
-            raise TimeoutError()
-        response = bytes(self._api_buffer).decode()
-        LOG.debug("%d: Received API response: '%s'", id(self), response)
+    def _set_result(self, result: Any) -> None:
+        assert self._state == ProtocolState.SENT_API_REQUEST
+        assert self._api_result
+        self._api_result.set_result(result)
+        self._api_result = None
+        self._api_call = None
         self._state = ProtocolState.RECEIVED_API_RESPONSE
-
-        return response
 
     def end_api_request(self) -> None:
         """
