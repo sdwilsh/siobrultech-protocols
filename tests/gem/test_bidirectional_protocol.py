@@ -5,6 +5,7 @@ import unittest
 from siobrultech_protocols.gem.const import CMD_DELAY_NEXT_PACKET
 from siobrultech_protocols.gem.protocol import (
     ApiCall,
+    ApiType,
     BidirectionalProtocol,
     ConnectionLostMessage,
     ConnectionMadeMessage,
@@ -17,7 +18,14 @@ from tests.gem.packet_test_data import assert_packet, read_packet
 
 
 TestCall = ApiCall[str, str](
-    formatter=lambda x: x, parser=lambda x: x if x.endswith("\n") else None
+    gem_formatter=lambda x: x,
+    gem_parser=lambda x: x if x.endswith("\n") else None,
+    ecm_formatter=lambda x: [
+        (x + "1").encode(),
+        (x + "2").encode(),
+        (x + "3").encode(),
+    ],
+    ecm_parser=lambda x: x.decode() if x.endswith(b"\n") else None,
 )
 
 
@@ -25,7 +33,7 @@ class TestBidirectionalProtocol(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self._queue: asyncio.Queue[PacketProtocolMessage] = asyncio.Queue()
         self._transport = MockTransport()
-        self._protocol = BidirectionalProtocol(self._queue)
+        self._protocol = BidirectionalProtocol(self._queue, api_type=ApiType.GEM)
         self._protocol.connection_made(self._transport)
         self._result: asyncio.Future[str] = asyncio.get_event_loop().create_future()
         message = self._queue.get_nowait()
@@ -59,6 +67,46 @@ class TestBidirectionalProtocol(unittest.IsolatedAsyncioTestCase):
         self._transport.writes.clear()
         self._protocol.invoke_api(TestCall, "request", self._result)
         self.assertEqual(self._transport.writes, ["request".encode()])
+
+    async def testEcmApiCall(self):
+        self._protocol._api_type = ApiType.ECM
+        self._protocol.begin_api_request()
+        self._protocol.invoke_api(TestCall, "request", self._result)
+        self._protocol.data_received(b"\xfc")
+        self._protocol.data_received(b"\xfc")
+        self._protocol.data_received(b"\xfcRESPONSE\n")
+        response = await self.get_response()
+
+        self.assertEqual(
+            self._transport.writes, [b"request1", b"request2", b"request3", b"\xfc"]
+        )
+        self.assertEqual(response, "RESPONSE\n")
+
+    async def testFailureDuringEcmApiCallDoesNotPreventNextCall(self):
+        self._protocol._api_type = ApiType.ECM
+        self._protocol.begin_api_request()
+        self._protocol.invoke_api(TestCall, "request", self._result)
+        self._protocol.data_received(b"\xfc")
+        self._protocol.data_received(b"X")
+        with self.assertRaises(Exception):
+            await self.get_response()
+        self._protocol.end_api_request()
+        self.assertEqual(self._transport.writes, [b"request1", b"request2"])
+        self._transport.writes.clear()
+
+        self._result = asyncio.get_event_loop().create_future()
+        self._protocol.begin_api_request()
+        self._protocol.invoke_api(TestCall, "request2", self._result)
+        self._protocol.data_received(b"\xfc")
+        self._protocol.data_received(b"\xfc")
+        self._protocol.data_received(b"\xfcRESPONSE\n")
+        response = await self.get_response()
+        self._protocol.end_api_request()
+
+        self.assertEqual(
+            self._transport.writes, [b"request21", b"request22", b"request23", b"\xfc"]
+        )
+        self.assertEqual(response, "RESPONSE\n")
 
     async def testPacketRacingWithApi(self):
         """Tests that the protocol can handle a packet coming in right after it has
