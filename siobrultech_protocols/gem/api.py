@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-from typing import Any, AsyncIterator, Callable, Coroutine, Generic, Optional, TypeVar
+import struct
+from typing import Any, AsyncIterator, Callable, Coroutine, Generic, Optional
 
 from siobrultech_protocols.gem.packets import PacketFormatType
 
@@ -13,63 +14,10 @@ from .const import (
     CMD_SET_PACKET_FORMAT,
     CMD_SET_PACKET_SEND_INTERVAL,
     CMD_SET_SECONDARY_PACKET_FORMAT,
-    ESCAPE_SEQUENCE,
-    TARGET_SERIAL_NUMBER_PREFIX,
 )
-from .protocol import BidirectionalProtocol
+from .protocol import ApiCall, BidirectionalProtocol, R, T
 
-# Argument type of an ApiCall.
-T = TypeVar("T")
-# Return type of an ApiCall response parser.
-R = TypeVar("R")
-
-
-class ApiCall(Generic[T, R]):
-    """
-    Helper class for making API calls with BidirectionalProtocol. There is one instance of
-    this class for each supported API call. This class handles the send_api_request and
-    receive_api_response parts of driving the protocol, since those are specific to each API
-    request type.
-    """
-
-    def __init__(self, formatter: Callable[[T], str], parser: Callable[[str], R]):
-        """
-        Constructs a new ApiCall.
-
-        formatter: given the parameters for the call (if any) as a Python object, formats the request
-        parser: given the response from the call as a string, parses it into a Python object
-        """
-        self._format_request = formatter
-        self._parse_response = parser
-
-    def send_request(
-        self,
-        protocol: BidirectionalProtocol,
-        arg: T,
-        serial_number: Optional[int] = None,
-    ) -> timedelta:
-        """
-        Send the request using the given protocol and argument.
-
-        Returns the length of time the caller should wait before attempting to receive the response.
-        """
-        formatted_request = self._format_request(arg)
-        if serial_number:
-            formatted_request = formatted_request.replace(
-                ESCAPE_SEQUENCE,
-                f"{TARGET_SERIAL_NUMBER_PREFIX}{serial_number%100000:05}",
-            )
-
-        return protocol.send_api_request(formatted_request)
-
-    def receive_response(self, protocol: BidirectionalProtocol) -> R:
-        """
-        Receive the response. Should be called after send_request, after
-        waiting the amount of time indicated in that method's return value.
-
-        Returns the API call response, parsed into an appropriate Python type.
-        """
-        return self._parse_response(protocol.receive_api_response())
+TIMEOUT = timedelta(seconds=15)
 
 
 @asynccontextmanager
@@ -77,12 +25,12 @@ async def call_api(
     api: ApiCall[T, R],
     protocol: BidirectionalProtocol,
     serial_number: Optional[int] = None,
+    timeout: timedelta = TIMEOUT,
 ) -> AsyncIterator[Callable[[T], Coroutine[Any, None, R]]]:
     async def send(arg: T) -> R:
-        delay = api.send_request(protocol, arg, serial_number)
-        await asyncio.sleep(delay.seconds)
-
-        return api.receive_response(protocol)
+        future = asyncio.get_event_loop().create_future()
+        protocol.invoke_api(api, arg, future)
+        return await asyncio.wait_for(future, timeout=timeout.total_seconds())
 
     delay = protocol.begin_api_request()
     try:
@@ -92,9 +40,48 @@ async def call_api(
         protocol.end_api_request()
 
 
+class GEMAPIStringResponseParser(Generic[R]):
+    """Most API responses in the GEM API end with \r\n; this parser waits until it sees a \r\n before attempting to parse."""
+
+    def __init__(self, parser: Callable[[str], R]) -> None:
+        self._parser = parser
+
+    def __call__(self, arg: str) -> R | None:
+        if not arg.endswith("\r\n"):
+            return None
+
+        return self._parser(arg)
+
+
+def parse_ecm_serial_number_from_settings(binary: bytes) -> int | None:
+    """
+    Unlike GEM, ECM-1240 doesn't have a specific get-serial-number API. Instead,
+    it returns the serial number as part of the device settings response.  This
+    parser understands enough of that format to extract the serial number from
+    the device settings.
+    """
+    if len(binary) < 33:
+        return None
+
+    # Note: The docs say that the serial number is transmitted big-endian, but
+    # my test device is outputting little-endian
+    [device_id, serial_number, zero, checksum] = struct.unpack_from(
+        "<10xBH18xBB", binary, 0
+    )
+    actual_sum = sum(binary[:32]) % 256
+    if zero != 0 or actual_sum != checksum:
+        raise ValueError()
+
+    # Following the GEM convention of just slamming device ID together with serial number
+    # to get what the user considers the serial number.
+    return int(f"{device_id}{serial_number:05}")
+
+
 GET_SERIAL_NUMBER = ApiCall[None, int](
-    formatter=lambda _: CMD_GET_SERIAL_NUMBER,
-    parser=lambda response: int(response),
+    gem_formatter=lambda _: CMD_GET_SERIAL_NUMBER,
+    gem_parser=GEMAPIStringResponseParser(lambda response: int(response)),
+    ecm_formatter=lambda _: [b"\xfc", b"SET", b"RCV"],
+    ecm_parser=parse_ecm_serial_number_from_settings,
 )
 
 
@@ -106,20 +93,28 @@ async def get_serial_number(
 
 
 SET_DATE_AND_TIME = ApiCall[datetime, bool](
-    formatter=lambda dt: f"{CMD_SET_DATE_AND_TIME}{dt.strftime('%y,%m,%d,%H,%M,%S')}\r",
-    parser=lambda response: response == "DTM\r\n",
+    gem_formatter=lambda dt: f"{CMD_SET_DATE_AND_TIME}{dt.strftime('%y,%m,%d,%H,%M,%S')}\r",
+    gem_parser=GEMAPIStringResponseParser(lambda response: response == "DTM\r\n"),
+    ecm_formatter=None,
+    ecm_parser=None,
 )
 SET_PACKET_FORMAT = ApiCall[int, bool](
-    formatter=lambda pf: f"{CMD_SET_PACKET_FORMAT}{pf:02}",
-    parser=lambda response: response == "PKT\r\n",
+    gem_formatter=lambda pf: f"{CMD_SET_PACKET_FORMAT}{pf:02}",
+    gem_parser=GEMAPIStringResponseParser(lambda response: response == "PKT\r\n"),
+    ecm_formatter=None,
+    ecm_parser=None,
 )
 SET_PACKET_SEND_INTERVAL = ApiCall[int, bool](
-    formatter=lambda si: f"{CMD_SET_PACKET_SEND_INTERVAL}{si:03}",
-    parser=lambda response: response == "IVL\r\n",
+    gem_formatter=lambda si: f"{CMD_SET_PACKET_SEND_INTERVAL}{si:03}",
+    gem_parser=GEMAPIStringResponseParser(lambda response: response == "IVL\r\n"),
+    ecm_formatter=lambda si: [b"\xfc", b"SET", b"IV2", bytes([si])],
+    ecm_parser=None,
 )
 SET_SECONDARY_PACKET_FORMAT = ApiCall[int, bool](
-    formatter=lambda pf: f"{CMD_SET_SECONDARY_PACKET_FORMAT}{pf:02}",
-    parser=lambda response: response == "PKF\r\n",
+    gem_formatter=lambda pf: f"{CMD_SET_SECONDARY_PACKET_FORMAT}{pf:02}",
+    gem_parser=GEMAPIStringResponseParser(lambda response: response == "PKF\r\n"),
+    ecm_formatter=None,
+    ecm_parser=None,
 )
 
 

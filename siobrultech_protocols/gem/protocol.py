@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections import deque
 from dataclasses import dataclass
 from datetime import timedelta
 from enum import Enum, unique
-from typing import Any, Optional, Set, Union
+from typing import Any, Callable, Deque, Generic, List, Optional, Set, TypeVar, Union
 
-from .const import CMD_DELAY_NEXT_PACKET, PACKET_DELAY_CLEAR_TIME_DEFAULT
+from .const import (
+    CMD_DELAY_NEXT_PACKET,
+    ESCAPE_SEQUENCE,
+    PACKET_DELAY_CLEAR_TIME_DEFAULT,
+    TARGET_SERIAL_NUMBER_PREFIX,
+)
 from .packets import (
     BIN32_ABS,
     BIN32_NET,
@@ -18,6 +24,7 @@ from .packets import (
     ECM_1240,
     MalformedPacketException,
     Packet,
+    PacketFormatType,
 )
 
 LOG = logging.getLogger(__name__)
@@ -69,6 +76,7 @@ class PacketProtocol(asyncio.Protocol):
         self._buffer = bytearray()
         self._queue = queue
         self._transport: Optional[asyncio.BaseTransport] = None
+        self._packet_type: PacketFormatType | None = None
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         LOG.info("%d: Connection opened", id(self))
@@ -88,114 +96,109 @@ class PacketProtocol(asyncio.Protocol):
         LOG.debug("%d: Received %d bytes", id(self), len(data))
         self._buffer.extend(data)
         try:
-            packet = self._get_packet()
-            while packet is not None:
-                self._queue.put_nowait(
-                    PacketReceivedMessage(protocol=self, packet=packet)
-                )
-                packet = self._get_packet()
+            should_continue = True
+            while should_continue:
+                should_continue = self._process_buffer()
+                self._ensure_transport()
         except Exception:
             LOG.exception("%d: Exception while attempting to parse a packet.", id(self))
 
-    def close(self) -> None:
-        """Closes the underlying transport, if any."""
-        if self._transport:
-            self._transport.close()
-        self._transport = None
-
-    def _get_packet(self) -> Optional[Packet]:
+    def _process_buffer(self) -> bool:
         """
-        Returns a full packet if available.
+        Processes one item in the buffer.
+
+        Returns True if there might be more items in the buffer.
         """
-        while len(self._buffer) > 0:
 
-            def skip_malformed_packet(msg: str, *args: Any, **kwargs: Any):
-                LOG.debug(
-                    "%d Skipping malformed packet due to "
-                    + msg
-                    + ". Buffer contents: %s",
-                    id(self),
-                    *args,
-                    self._buffer,
-                )
-                del self._buffer[0 : len(PACKET_HEADER)]
+        def skip_malformed_packet(msg: str, *args: Any, **kwargs: Any):
+            header_index = self._buffer.find(PACKET_HEADER, 1)
+            end = header_index if header_index != -1 else len(self._buffer)
+            LOG.debug(
+                "%d Skipping malformed packet due to " + msg + ". Buffer contents: %s",
+                id(self),
+                *args,
+                self._buffer[0:end],
+            )
+            del self._buffer[0:end]
 
-            header_index = self._buffer.find(PACKET_HEADER)
-            if header_index == -1:
-                LOG.debug(
-                    "%d: No header found. Discarding junk data: %s",
-                    id(self),
-                    self._buffer,
-                )
-                self._buffer.clear()
-                continue
-            del self._buffer[0:header_index]
+        header_index = self._buffer.find(PACKET_HEADER)
+        if header_index != 0:
+            end = header_index if header_index != -1 else len(self._buffer)
+            self.unknown_data_received(self._buffer[0:end])
+            del self._buffer[0:end]
+            return len(self._buffer) > 0
 
-            if len(self._buffer) < len(PACKET_HEADER) + 1:
-                # Not enough length yet
-                LOG.debug(
-                    "%d: Not enough data in buffer yet (%d bytes): %s",
-                    id(self),
-                    len(self._buffer),
-                    self._buffer,
-                )
-                return None
+        if len(self._buffer) < len(PACKET_HEADER) + 1:
+            # Not enough length yet
+            LOG.debug(
+                "%d: Not enough data in buffer yet (%d bytes): %s",
+                id(self),
+                len(self._buffer),
+                self._buffer,
+            )
+            return False
 
-            format_code = self._buffer[len(PACKET_HEADER)]
-            if format_code == 8:
-                packet_format = BIN32_ABS
-            elif format_code == 7:
-                packet_format = BIN32_NET
-            elif format_code == 6:
-                packet_format = BIN48_ABS
-            elif format_code == 5:
-                packet_format = BIN48_NET
-            elif format_code == 3:
-                packet_format = ECM_1240
-            elif format_code == 1:
-                packet_format = ECM_1220
-            else:
-                skip_malformed_packet("unknown format code 0x%x", format_code)
-                continue
+        format_code = self._buffer[len(PACKET_HEADER)]
+        if format_code == 8:
+            packet_format = BIN32_ABS
+        elif format_code == 7:
+            packet_format = BIN32_NET
+        elif format_code == 6:
+            packet_format = BIN48_ABS
+        elif format_code == 5:
+            packet_format = BIN48_NET
+        elif format_code == 3:
+            packet_format = ECM_1240
+        elif format_code == 1:
+            packet_format = ECM_1220
+        else:
+            skip_malformed_packet("unknown format code 0x%x", format_code)
+            return len(self._buffer) > 0
 
-            if len(self._buffer) < packet_format.size:
-                # Not enough length yet
-                LOG.debug(
-                    "%d: Not enough data in buffer yet (%d bytes)",
-                    id(self),
-                    len(self._buffer),
-                )
-                return None
+        if len(self._buffer) < packet_format.size:
+            # Not enough length yet
+            LOG.debug(
+                "%d: Not enough data in buffer yet (%d bytes)",
+                id(self),
+                len(self._buffer),
+            )
+            return False
 
+        try:
+            packet = None
             try:
-                result = None
-                try:
-                    result = packet_format.parse(self._buffer)
-                except MalformedPacketException:
-                    if packet_format != BIN48_NET:
-                        raise
+                packet = packet_format.parse(self._buffer)
+            except MalformedPacketException:
+                if packet_format != BIN48_NET:
+                    raise
 
-                if result is None:
-                    if len(self._buffer) < BIN48_NET_TIME.size:
-                        # Not enough length yet
-                        LOG.debug(
-                            "%d: Not enough data in buffer yet (%d bytes)",
-                            id(self),
-                            len(self._buffer),
-                        )
-                        return None
+            if packet is None:
+                if len(self._buffer) < BIN48_NET_TIME.size:
+                    # Not enough length yet
+                    LOG.debug(
+                        "%d: Not enough data in buffer yet (%d bytes)",
+                        id(self),
+                        len(self._buffer),
+                    )
+                    return False
 
-                    result = BIN48_NET_TIME.parse(self._buffer)
+                packet = BIN48_NET_TIME.parse(self._buffer)
 
-                LOG.debug(
-                    "%d: Parsed one %s packet.", id(self), result.packet_format.name
-                )
-                del self._buffer[0 : result.packet_format.size]
-                return result
-            except MalformedPacketException as e:
-                skip_malformed_packet(e.args[0])
+            self._packet_type = packet.packet_format.type
+            LOG.debug("%d: Parsed one %s packet.", id(self), packet.packet_format.name)
+            del self._buffer[0 : packet.packet_format.size]
+            self._queue.put_nowait(PacketReceivedMessage(protocol=self, packet=packet))
+        except MalformedPacketException as e:
+            skip_malformed_packet(e.args[0])
 
-        self._ensure_transport()
+        return len(self._buffer) > 0
+
+    def unknown_data_received(self, data: bytes) -> None:
+        LOG.debug(
+            "%d: No header found. Discarding junk data: %s",
+            id(self),
+            data,
+        )
 
     def _ensure_transport(self) -> asyncio.BaseTransport:
         if not self._transport:
@@ -208,8 +211,9 @@ class PacketProtocol(asyncio.Protocol):
 class ProtocolState(Enum):
     RECEIVING_PACKETS = 1  # Receiving packets from the GEM
     SENT_PACKET_DELAY_REQUEST = 2  #  Sent the packet delay request prior to an API request, waiting for any in-flight packets
-    SENT_API_REQUEST = 3  # Sent an API request, waiting for a response
-    RECEIVED_API_RESPONSE = 4  # Received an API response, waiting for end call
+    SENDING_API_REQUEST = 3  # Sending a multi-part request
+    SENT_API_REQUEST = 4  # Sent an API request, waiting for a response
+    RECEIVED_API_RESPONSE = 5  # Received an API response, waiting for end call
 
 
 class ProtocolStateException(Exception):
@@ -235,6 +239,85 @@ class ProtocolStateException(Exception):
         return f"Expected state to be {expected_str}; but got {self._actual.name}!"
 
 
+# Argument type of an ApiCall.
+T = TypeVar("T")
+# Return type of an ApiCall response parser.
+R = TypeVar("R")
+
+
+class ApiType(Enum):
+    ECM = 1
+    GEM = 2
+
+
+@dataclass
+class ApiCall(Generic[T, R]):
+    """
+    Helper class for making API calls with BidirectionalProtocol. There is one instance of
+    this class for each supported API call. This class handles the send_api_request and
+    receive_api_response parts of driving the protocol, since those are specific to each API
+    request type.
+    """
+
+    def __init__(
+        self,
+        gem_formatter: Callable[[T], str],
+        gem_parser: Callable[[str], R | None] | None,
+        ecm_formatter: Callable[[T], List[bytes]] | None,
+        ecm_parser: Callable[[bytes], R | None] | None,
+    ) -> None:
+        """
+        Create a new APICall.
+
+        gem_formatter - a callable that, given a parameter of type T, returns the string to send to the GEM to make the API call
+        gem_parser - a callable that, given a string, parses it into a value of type R.
+                    If there is not enough data to parse yet, it should return None.
+                    If there is enough data to parse, but it is malformed, it should raise an Exception.
+        ecm_formatter - a callable that, given a parameter of type T, returns the series of bytes chunks to send to the ECM to make the API call
+        ecm_parser - a callable that, given a bytes, parses it into a value of type R.
+                    If there is not enough data to parse yet, it should return None.
+                    If there is enough data to parse, but it is malformed, it should raise an Exception.
+        """
+        self._gem_formatter = gem_formatter
+        self._gem_parser = gem_parser
+        self._ecm_formatter = ecm_formatter
+        self._ecm_parser = ecm_parser
+
+    def format(
+        self,
+        api_type: ApiType,
+        arg: T,
+        serial_number: int | None,
+    ) -> List[bytes]:
+        if api_type == ApiType.GEM:
+            result = self._gem_formatter(arg)
+            if serial_number:
+                result = result.replace(
+                    ESCAPE_SEQUENCE,
+                    f"{TARGET_SERIAL_NUMBER_PREFIX}{serial_number%100000:05}",
+                )
+
+            return [result.encode()]
+        else:
+            assert self._ecm_formatter
+            result = self._ecm_formatter(arg)
+            return result
+
+    def has_parser(self, api_type: ApiType) -> bool:
+        if api_type == ApiType.GEM:
+            return self._gem_parser is not None
+        else:
+            return self._ecm_parser is not None
+
+    def parse(self, api_type: ApiType, response: bytes) -> R | None:
+        if api_type == ApiType.GEM and self._gem_parser:
+            return self._gem_parser(response.decode())
+        elif api_type == ApiType.ECM and self._ecm_parser:
+            return self._ecm_parser(response)
+        else:
+            return None
+
+
 class BidirectionalProtocol(PacketProtocol):
     """Protocol implementation for bi-directional communication with a GreenEye Monitor."""
 
@@ -249,6 +332,8 @@ class BidirectionalProtocol(PacketProtocol):
         self,
         queue: asyncio.Queue[PacketProtocolMessage],
         packet_delay_clear_time: timedelta = PACKET_DELAY_CLEAR_TIME_DEFAULT,
+        send_packet_delay: bool = True,
+        api_type: ApiType | None = None,
     ):
         # Ensure that the clear time and the response wait time fit within the 15 second packet delay interval that is requested.
         assert (packet_delay_clear_time + API_RESPONSE_WAIT_TIME) < timedelta(
@@ -257,19 +342,75 @@ class BidirectionalProtocol(PacketProtocol):
 
         super().__init__(queue)
         self._api_buffer = bytearray()
+        self._send_packet_delay = send_packet_delay
         self._packet_delay_clear_time = packet_delay_clear_time
         self._state = ProtocolState.RECEIVING_PACKETS
+        self._api_call: ApiCall[Any, Any] | None = None
+        self._api_result: asyncio.Future[Any] | None = None
+        self._api_type = api_type
+        self._api_requests: Deque[bytes] = deque()
 
     @property
     def packet_delay_clear_time(self) -> timedelta:
         return self._packet_delay_clear_time
 
-    def data_received(self, data: bytes) -> None:
+    @property
+    def api_type(self) -> ApiType:
+        if self._api_type is None:
+            if (
+                self._packet_type == PacketFormatType.ECM_1220
+                or self._packet_type == PacketFormatType.ECM_1240
+            ):
+                self._api_type = ApiType.ECM
+            elif self._packet_type:
+                self._api_type = ApiType.GEM
+
+        result = self._api_type
+        assert result
+        return result
+
+    def unknown_data_received(self, data: bytes) -> None:
+        if self._state == ProtocolState.SENDING_API_REQUEST:
+            # We're in the middle of an ECM API call, which
+            # has multiple roundtrips to send all the request chunks
+            assert self._api_call
+            if data.startswith(b"\xfc"):
+                # ECM acks each chunk with \xfc
+                if len(self._api_requests) > 0:
+                    self._send_next_api_request_chunk()
+                else:
+                    # No more chunks means that we've now completely sent the request
+                    self._state = ProtocolState.SENT_API_REQUEST
+
+                    if self._api_call.has_parser(self.api_type):
+                        # This API call is expecting a response, and
+                        # the ACK character might be immediately followed
+                        # by response data, so we pull off the ACK character
+                        # and fall through to the rest of the method,
+                        # which then pulls the response from the data
+                        data = data[1:]
+                    else:
+                        # Last ACK of a request with no response
+                        self._set_result(result=None)
+            else:
+                self._set_result(
+                    exception=Exception("Bad response from device: {data}")
+                )
+
         if self._state == ProtocolState.SENT_API_REQUEST:
-            LOG.debug("%d: Received %d bytes", id(self), len(data))
+            assert self._api_call is not None
             self._api_buffer.extend(data)
-        else:
-            super().data_received(data)
+
+            response = bytes(self._api_buffer)
+            LOG.debug("%d: Attempting to parse API response: %s", id(self), response)
+
+            result = self._api_call.parse(self.api_type, response)
+            if result:
+                if self.api_type == ApiType.ECM:
+                    self._ensure_write_transport().write(b"\xfc")
+                self._set_result(result=result)
+        elif self._state == ProtocolState.RECEIVING_PACKETS:
+            super().unknown_data_received(data)
 
     def begin_api_request(self) -> timedelta:
         """
@@ -281,15 +422,23 @@ class BidirectionalProtocol(PacketProtocol):
         """
         self._expect_state(ProtocolState.RECEIVING_PACKETS)
 
-        LOG.debug("%d: Starting API request. Requesting packet delay...", id(self))
-        self._ensure_write_transport().write(
-            CMD_DELAY_NEXT_PACKET.encode()
-        )  # Delay packets for 15 seconds
         self._state = ProtocolState.SENT_PACKET_DELAY_REQUEST
+        if self.api_type == ApiType.GEM and self._send_packet_delay:
+            LOG.debug("%d: Starting API request. Requesting packet delay...", id(self))
+            self._ensure_write_transport().write(
+                CMD_DELAY_NEXT_PACKET.encode()
+            )  # Delay packets for 15 seconds
+            return self._packet_delay_clear_time
+        else:
+            return timedelta(seconds=0)
 
-        return self._packet_delay_clear_time
-
-    def send_api_request(self, request: str) -> timedelta:
+    def invoke_api(
+        self,
+        api: ApiCall[T, R],
+        arg: T,
+        result: asyncio.Future[R],
+        serial_number: Optional[int] = None,
+    ) -> None:
         """
         Send the given API request, after having called begin_api_request.
 
@@ -298,26 +447,57 @@ class BidirectionalProtocol(PacketProtocol):
         Returns a timedelta. Callers must wait for that amount of time, then call receive_api_response to receive the response.
         """
         self._expect_state(ProtocolState.SENT_PACKET_DELAY_REQUEST)
+        assert len(self._api_requests) == 0
 
-        LOG.debug("%d: Sending API request '%s'...", id(self), request)
-        self._ensure_write_transport().write(request.encode())
-        self._state = ProtocolState.SENT_API_REQUEST
+        self._api_call = api
+        self._api_result = result
+        self._api_requests.extend(api.format(self.api_type, arg, serial_number))
 
-        return API_RESPONSE_WAIT_TIME
+        self._send_next_api_request_chunk()
 
-    def receive_api_response(self) -> str:
-        """
-        Returns the bytes that were received in response to a call to send_api_request.
+    def _send_next_api_request_chunk(self) -> None:
+        assert len(self._api_requests) > 0
+        assert self._api_call
+        assert self._api_result
 
-        Callers must call end_api_request after this call.
-        """
-        self._expect_state(ProtocolState.SENT_API_REQUEST)
+        request = self._api_requests.popleft()
+        LOG.debug("%d: Sending API request %s...", id(self), request)
+        self._ensure_write_transport().write(request)
+        self._state = (
+            ProtocolState.SENT_API_REQUEST
+            if self.api_type == ApiType.GEM
+            else ProtocolState.SENDING_API_REQUEST
+        )
+        if (
+            not self._api_call.has_parser(self.api_type)
+            and self.api_type == ApiType.GEM
+        ):
+            # GEM API calls without a response are just a single send and you're done
+            # (ECM API calls without a response still have multiple request chunks to send,
+            # and even the last chunk is still acked with \xfc, so we don't advance the
+            # state for them here)
+            assert len(self._api_requests) == 0
+            self._set_result(result=None)
 
-        response = bytes(self._api_buffer).decode()
-        LOG.debug("%d: Received API response: '%s'", id(self), response)
-        self._state = ProtocolState.RECEIVED_API_RESPONSE
+    def _set_result(
+        self, result: Any | None = None, exception: Exception | None = None
+    ) -> None:
+        assert (
+            self._state == ProtocolState.SENT_API_REQUEST
+            or self._state == ProtocolState.SENDING_API_REQUEST
+        )
+        assert self._api_result
+        assert not self._api_result.done()
 
-        return response
+        if exception is None:
+            self._state = ProtocolState.RECEIVED_API_RESPONSE
+            self._api_result.set_result(result)
+        else:
+            assert result is None
+            # self._api_requests.clear()
+            self._api_result.set_exception(exception)
+        self._api_result = None
+        self._api_call = None
 
     def end_api_request(self) -> None:
         """
@@ -327,11 +507,15 @@ class BidirectionalProtocol(PacketProtocol):
         self._expect_state(
             {
                 ProtocolState.RECEIVED_API_RESPONSE,
+                ProtocolState.SENDING_API_REQUEST,
                 ProtocolState.SENT_API_REQUEST,
                 ProtocolState.SENT_PACKET_DELAY_REQUEST,
             }
         )
         self._api_buffer.clear()
+        self._api_call = None
+        self._api_requests.clear()
+        self._api_result = None
         LOG.debug("%d: Ended API request", id(self))
         self._state = ProtocolState.RECEIVING_PACKETS
 

@@ -1,8 +1,11 @@
 import asyncio
+from typing import Callable
 import unittest
 
 from siobrultech_protocols.gem.const import CMD_DELAY_NEXT_PACKET
 from siobrultech_protocols.gem.protocol import (
+    ApiCall,
+    ApiType,
     BidirectionalProtocol,
     ConnectionLostMessage,
     ConnectionMadeMessage,
@@ -14,12 +17,25 @@ from tests.gem.mock_transport import MockTransport
 from tests.gem.packet_test_data import assert_packet, read_packet
 
 
-class TestBidirectionalProtocol(unittest.TestCase):
+TestCall = ApiCall[str, str](
+    gem_formatter=lambda x: x,
+    gem_parser=lambda x: x if x.endswith("\n") else None,
+    ecm_formatter=lambda x: [
+        (x + "1").encode(),
+        (x + "2").encode(),
+        (x + "3").encode(),
+    ],
+    ecm_parser=lambda x: x.decode() if x.endswith(b"\n") else None,
+)
+
+
+class TestBidirectionalProtocol(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self._queue: asyncio.Queue[PacketProtocolMessage] = asyncio.Queue()
         self._transport = MockTransport()
-        self._protocol = BidirectionalProtocol(self._queue)
+        self._protocol = BidirectionalProtocol(self._queue, api_type=ApiType.GEM)
         self._protocol.connection_made(self._transport)
+        self._result: asyncio.Future[str] = asyncio.get_event_loop().create_future()
         message = self._queue.get_nowait()
         assert isinstance(message, ConnectionMadeMessage)
         assert message.protocol is self._protocol
@@ -32,53 +48,108 @@ class TestBidirectionalProtocol(unittest.TestCase):
             assert isinstance(message, ConnectionLostMessage)
             assert message.protocol is self._protocol
             assert message.exc is exc
-        self._protocol.close()  # Close after connection_lost is not required, but at least should not crash
-
-    def testClose(self):
-        self._protocol.close()
-
-        assert self._transport.closed
 
     def testBeginApi(self):
         self._protocol.begin_api_request()
         self.assertEqual(self._transport.writes, [CMD_DELAY_NEXT_PACKET.encode()])
 
+    def testBeginApiWithoutDelay(self):
+        self._protocol._send_packet_delay = False
+        self._protocol.begin_api_request()
+        self.assertEqual(self._transport.writes, [])
+
     def testSendWithoutBeginFails(self):
         with self.assertRaises(ProtocolStateException):
-            self._protocol.send_api_request("request")
+            self._protocol.invoke_api(TestCall, "request", self._result)
 
     def testSendRequest(self):
         self._protocol.begin_api_request()
         self._transport.writes.clear()
-        self._protocol.send_api_request("request")
+        self._protocol.invoke_api(TestCall, "request", self._result)
         self.assertEqual(self._transport.writes, ["request".encode()])
 
-    def testPacketRacingWithApi(self):
+    async def testEcmApiCall(self):
+        self._protocol._api_type = ApiType.ECM
+        self._protocol.begin_api_request()
+        self._protocol.invoke_api(TestCall, "request", self._result)
+        self._protocol.data_received(b"\xfc")
+        self._protocol.data_received(b"\xfc")
+        self._protocol.data_received(b"\xfcRESPONSE\n")
+        response = await self.get_response()
+
+        self.assertEqual(
+            self._transport.writes, [b"request1", b"request2", b"request3", b"\xfc"]
+        )
+        self.assertEqual(response, "RESPONSE\n")
+
+    async def testFailureDuringEcmApiCallDoesNotPreventNextCall(self):
+        self._protocol._api_type = ApiType.ECM
+        self._protocol.begin_api_request()
+        self._protocol.invoke_api(TestCall, "request", self._result)
+        self._protocol.data_received(b"\xfc")
+        self._protocol.data_received(b"X")
+        with self.assertRaises(Exception):
+            await self.get_response()
+        self._protocol.end_api_request()
+        self.assertEqual(self._transport.writes, [b"request1", b"request2"])
+        self._transport.writes.clear()
+
+        self._result = asyncio.get_event_loop().create_future()
+        self._protocol.begin_api_request()
+        self._protocol.invoke_api(TestCall, "request2", self._result)
+        self._protocol.data_received(b"\xfc")
+        self._protocol.data_received(b"\xfc")
+        self._protocol.data_received(b"\xfcRESPONSE\n")
+        response = await self.get_response()
+        self._protocol.end_api_request()
+
+        self.assertEqual(
+            self._transport.writes, [b"request21", b"request22", b"request23", b"\xfc"]
+        )
+        self.assertEqual(response, "RESPONSE\n")
+
+    async def testPacketRacingWithApi(self):
         """Tests that the protocol can handle a packet coming in right after it has
         requested a packet delay from the GEM."""
         self._protocol.begin_api_request()
         self._protocol.data_received(read_packet("BIN32-ABS.bin"))
-        self._protocol.send_api_request("REQUEST")
-        self._protocol.data_received(b"RESPONSE")
-        response = self._protocol.receive_api_response()
+        self._protocol.invoke_api(TestCall, "REQUEST", self._result)
+        self._protocol.data_received(b"RESPONSE\n")
+        response = await self.get_response()
         self._protocol.end_api_request()
 
-        self.assertEqual(response, "RESPONSE")
+        self.assertEqual(response, "RESPONSE\n")
+        self.assertPacket("BIN32-ABS.bin")
+
+    async def testPacketInterleavingWithApi(self):
+        """Tests that the protocol can handle a packet coming in in the middle of the API response.
+        (I don't know whether this can happen in practice.)"""
+        self._protocol.begin_api_request()
+        self._protocol.data_received(read_packet("BIN32-ABS.bin"))
+        self._protocol.invoke_api(TestCall, "REQUEST", self._result)
+        self._protocol.data_received(b"RES")
+        self._protocol.data_received(read_packet("BIN32-ABS.bin"))
+        self._protocol.data_received(b"PONSE\n")
+        response = await self.get_response()
+        self._protocol.end_api_request()
+
+        self.assertEqual(response, "RESPONSE\n")
+        self.assertPacket("BIN32-ABS.bin")
         self.assertPacket("BIN32-ABS.bin")
 
     def testDeviceIgnoresApi(self):
         """Tests that the protocol fails appropriately if a device ignores API calls and just keeps sending packets."""
         self._protocol.begin_api_request()
         self._protocol.data_received(read_packet("BIN32-ABS.bin"))
-        self._protocol.send_api_request("REQUEST")
+        self._protocol.invoke_api(TestCall, "REQUEST", self._result)
         self._protocol.data_received(read_packet("BIN32-ABS.bin"))
-        with self.assertRaises(UnicodeDecodeError):
-            self._protocol.receive_api_response()
+        assert not self._result.done()
         self._protocol.end_api_request()
 
         self.assertPacket("BIN32-ABS.bin")
+        self.assertPacket("BIN32-ABS.bin")
 
-    def testApiCallWithPacketInProgress(self):
+    async def testApiCallWithPacketInProgress(self):
         """Tests that the protocol can handle a packet that's partially arrived when it
         requested a packet delay from the GEM."""
         packet = read_packet("BIN32-ABS.bin")
@@ -86,24 +157,24 @@ class TestBidirectionalProtocol(unittest.TestCase):
         self._protocol.data_received(packet[0:bytes_sent_before_packet_delay_command])
         self._protocol.begin_api_request()
         self._protocol.data_received(packet[bytes_sent_before_packet_delay_command:])
-        self._protocol.send_api_request("REQUEST")
-        self._protocol.data_received(b"RESPONSE")
-        response = self._protocol.receive_api_response()
+        self._protocol.invoke_api(TestCall, "REQUEST", self._result)
+        self._protocol.data_received(b"RESPONSE\n")
+        response = await self.get_response()
         self._protocol.end_api_request()
 
-        self.assertEqual(response, "RESPONSE")
+        self.assertEqual(response, "RESPONSE\n")
         self.assertPacket("BIN32-ABS.bin")
 
-    def testApiCallToIdleGem(self):
+    async def testApiCallToIdleGem(self):
         """Tests that the protocol can handle no packets arriving after it has
         requested a packet delay from the GEM."""
         self._protocol.begin_api_request()
-        self._protocol.send_api_request("REQUEST")
-        self._protocol.data_received(b"RESPONSE")
-        response = self._protocol.receive_api_response()
+        self._protocol.invoke_api(TestCall, "REQUEST", self._result)
+        self._protocol.data_received(b"RESPONSE\n")
+        response = await self.get_response()
         self._protocol.end_api_request()
 
-        self.assertEqual(response, "RESPONSE")
+        self.assertEqual(response, "RESPONSE\n")
         self.assertNoPacket()
 
     def testEndAfterBegin(self):
@@ -111,6 +182,9 @@ class TestBidirectionalProtocol(unittest.TestCase):
         after calling begin_api_request."""
         self._protocol.begin_api_request()
         self._protocol.end_api_request()
+
+    async def get_response(self) -> str:
+        return await asyncio.wait_for(self._result, 0)
 
     def assertNoPacket(self):
         self.assertTrue(self._queue.empty())
