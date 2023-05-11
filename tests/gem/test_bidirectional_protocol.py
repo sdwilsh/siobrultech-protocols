@@ -43,6 +43,11 @@ class TestBidirectionalProtocol(unittest.IsolatedAsyncioTestCase):
         self._protocol.begin_api_request()
         self.assertEqual(self._transport.writes, [CMD_DELAY_NEXT_PACKET.encode()])
 
+    def testBeginApiWithoutDelay(self):
+        self._protocol.send_packet_delay = False
+        self._protocol.begin_api_request()
+        self.assertEqual(self._transport.writes, [])
+
     def testSendWithoutBeginFails(self):
         with self.assertRaises(ProtocolStateException):
             self._protocol.invoke_api(TestCall, "request", self._result)
