@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import struct
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import Any, AsyncIterator, Callable, Coroutine, Generic, Optional
@@ -52,9 +53,35 @@ class GEMAPIStringResponseParser(Generic[R]):
         return self._parser(arg)
 
 
+def parse_ecm_serial_number_from_settings(binary: bytes) -> int | None:
+    """
+    Unlike GEM, ECM-1240 doesn't have a specific get-serial-number API. Instead,
+    it returns the serial number as part of the device settings response.  This
+    parser understands enough of that format to extract the serial number from
+    the device settings.
+    """
+    if len(binary) < 33:
+        return None
+
+    # Note: The docs say that the serial number is transmitted big-endian, but
+    # my test device is outputting little-endian
+    [device_id, serial_number, zero, checksum] = struct.unpack_from(
+        "<10xBH18xBB", binary, 0
+    )
+    actual_sum = sum(binary[:32]) % 256
+    if zero != 0 or actual_sum != checksum:
+        raise ValueError()
+
+    # Following the GEM convention of just slamming device ID together with serial number
+    # to get what the user considers the serial number.
+    return int(f"{device_id}{serial_number:05}")
+
+
 GET_SERIAL_NUMBER = ApiCall[None, int](
-    formatter=lambda _: CMD_GET_SERIAL_NUMBER,
-    parser=GEMAPIStringResponseParser(lambda response: int(response)),
+    gem_formatter=lambda _: CMD_GET_SERIAL_NUMBER,
+    gem_parser=GEMAPIStringResponseParser(lambda response: int(response)),
+    ecm_formatter=lambda _: [b"\xfc", b"SET", b"RCV"],
+    ecm_parser=parse_ecm_serial_number_from_settings,
 )
 
 
@@ -66,20 +93,28 @@ async def get_serial_number(
 
 
 SET_DATE_AND_TIME = ApiCall[datetime, bool](
-    formatter=lambda dt: f"{CMD_SET_DATE_AND_TIME}{dt.strftime('%y,%m,%d,%H,%M,%S')}\r",
-    parser=GEMAPIStringResponseParser(lambda response: response == "DTM\r\n"),
+    gem_formatter=lambda dt: f"{CMD_SET_DATE_AND_TIME}{dt.strftime('%y,%m,%d,%H,%M,%S')}\r",
+    gem_parser=GEMAPIStringResponseParser(lambda response: response == "DTM\r\n"),
+    ecm_formatter=None,
+    ecm_parser=None,
 )
 SET_PACKET_FORMAT = ApiCall[int, bool](
-    formatter=lambda pf: f"{CMD_SET_PACKET_FORMAT}{pf:02}",
-    parser=GEMAPIStringResponseParser(lambda response: response == "PKT\r\n"),
+    gem_formatter=lambda pf: f"{CMD_SET_PACKET_FORMAT}{pf:02}",
+    gem_parser=GEMAPIStringResponseParser(lambda response: response == "PKT\r\n"),
+    ecm_formatter=None,
+    ecm_parser=None,
 )
 SET_PACKET_SEND_INTERVAL = ApiCall[int, bool](
-    formatter=lambda si: f"{CMD_SET_PACKET_SEND_INTERVAL}{si:03}",
-    parser=GEMAPIStringResponseParser(lambda response: response == "IVL\r\n"),
+    gem_formatter=lambda si: f"{CMD_SET_PACKET_SEND_INTERVAL}{si:03}",
+    gem_parser=GEMAPIStringResponseParser(lambda response: response == "IVL\r\n"),
+    ecm_formatter=lambda si: [b"\xfc", b"SET", b"IV2", bytes([si])],
+    ecm_parser=None,
 )
 SET_SECONDARY_PACKET_FORMAT = ApiCall[int, bool](
-    formatter=lambda pf: f"{CMD_SET_SECONDARY_PACKET_FORMAT}{pf:02}",
-    parser=GEMAPIStringResponseParser(lambda response: response == "PKF\r\n"),
+    gem_formatter=lambda pf: f"{CMD_SET_SECONDARY_PACKET_FORMAT}{pf:02}",
+    gem_parser=GEMAPIStringResponseParser(lambda response: response == "PKF\r\n"),
+    ecm_formatter=None,
+    ecm_parser=None,
 )
 
 
