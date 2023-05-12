@@ -106,3 +106,6 @@ venv.bak/
 # PyCharm
 /.idea/tasks.xml
 /.idea/workspace.xml
+
+# Ruff
+/.ruff_cache
