@@ -292,7 +292,7 @@ class ECMPacketFormat(PacketFormat):
             self.num_channels, 5, ByteOrder.LoToHi, Sign.Unsigned
         )
         self.fields["reserved"] = BytesField(size=4)
-        self.fields["serial_number"] = NumericField(2, ByteOrder.HiToLo, Sign.Unsigned)
+        self.fields["serial_number"] = NumericField(2, ByteOrder.LoToHi, Sign.Unsigned)
         self.fields["flag"] = ByteField()
         self.fields["device_id"] = NumericField(1, ByteOrder.HiToLo, Sign.Unsigned)
         self.fields["currents"] = FloatingPointArrayField(
