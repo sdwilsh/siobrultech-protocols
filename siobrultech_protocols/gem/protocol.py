@@ -258,7 +258,7 @@ class ApiCall(Generic[T, R]):
     """
 
     def __init__(
-        self, formatter: Callable[[T], str], parser: Callable[[str], R | None]
+        self, formatter: Callable[[T], str], parser: Callable[[str], R | None] | None
     ) -> None:
         """
         Create a new APICall.
@@ -280,8 +280,15 @@ class ApiCall(Generic[T, R]):
 
         return result
 
+    @property
+    def has_parser(self) -> bool:
+        return self._parser is not None
+
     def parse(self, response: str) -> R | None:
-        return self._parser(response)
+        if self._parser:
+            return self._parser(response)
+        else:
+            return None
 
 
 class BidirectionalProtocol(PacketProtocol):
@@ -370,6 +377,8 @@ class BidirectionalProtocol(PacketProtocol):
         LOG.debug("%d: Sending API request '%s'...", id(self), request)
         self._ensure_write_transport().write(request.encode())
         self._state = ProtocolState.SENT_API_REQUEST
+        if not api.has_parser:
+            self._set_result(None)
 
     def _set_result(self, result: Any) -> None:
         assert self._state == ProtocolState.SENT_API_REQUEST
