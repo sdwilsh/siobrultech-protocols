@@ -152,3 +152,7 @@ pre-commit install
 ### Testing
 
 Tests are run with `pytest`.
+
+### Linting
+
+Lint can be run with [Earthly](https://earthly.dev/) with `./earthly.sh +lint`

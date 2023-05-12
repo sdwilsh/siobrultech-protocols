@@ -2,5 +2,32 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:base"
+  ],
+  "pip_requirements": {
+    "fileMatch": [
+      "(^|/)requirements(-.*)?.txt$"
+    ]
+  },
+  "regexManagers": [
+    {
+      "fileMatch": [
+        "^Earthfile$"
+      ],
+      "matchStrings": [
+        "#\\s*renovate:\\s*datasource=(?<datasource>.*?)\\s+depName=(?<depName>.*?)(?:\\s+versioning=(?<versioning>.*?))?\\n\\s*ARG\\s+.+_VERSION=(?<currentValue>.*?)\\s"
+      ],
+      "versioningTemplate": "{{#if versioning}}{{versioning}}{{else}}semver{{/if}}"
+    },
+    {
+      "fileMatch": [
+        "^earthly\\.sh$"
+      ],
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "earthly/earthly",
+      "matchStrings": [
+        "earthly\\/earthly:(?<currentValue>.*?)\\s"
+      ],
+      "versioningTemplate": "semver-coerced"
+    }
   ]
 }
