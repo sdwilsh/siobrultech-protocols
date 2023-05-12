@@ -1,6 +1,18 @@
 import unittest
+from datetime import datetime
 
-from siobrultech_protocols.gem.fields import *
+from siobrultech_protocols.gem.fields import (
+    ArrayField,
+    ByteField,
+    ByteOrder,
+    BytesField,
+    DateTimeField,
+    FloatingPointArrayField,
+    FloatingPointField,
+    NumericArrayField,
+    NumericField,
+    Sign,
+)
 
 
 class TestFieldParsing(unittest.TestCase):
