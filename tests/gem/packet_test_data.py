@@ -784,7 +784,7 @@ PACKETS = {
         "polarized_watt_seconds": [3050305, 97838],
         "currents": [0.21, 62.28],
         "seconds": 9700,
-        "serial_number": 45569,
+        "serial_number": 434,
         "device_id": 5,
         "voltage": 128.8,
         "aux": [70, 63, 65, 63, 65],
