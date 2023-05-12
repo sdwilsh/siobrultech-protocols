@@ -97,12 +97,10 @@ GET_ALL_SETTINGS = api.ApiCall[None, AllSettings](
 delay = protocol.begin_api_request()
 sleep(delay)  # Wait for the specified delay, using whatever mechanism is appropriate for your environment
 
-# Send the API request.
-delay = GET_ALL_SETTINGS.send_request(protocol, None)
-sleep(delay)
-
-# Parse the response after it has arrived
-settings = GET_ALL_SETTINGS.receive_response(protocol)
+# Send the API request. We use asyncio's implementation of Future, but you can use whatever you like.
+result = asyncio.get_event_loop().create_future()
+protocol.invoke_api(GET_ALL_SETTINGS, None, result)
+settings = await asyncio.wait_for(result, timeout=5)
 
 # End the API request
 protocol.end_api_request()
