@@ -18,6 +18,14 @@ python-dev-requirements:
     COPY requirements-dev.txt .
     RUN pip install --no-cache-dir -r requirements-dev.txt
 
+black-validate:
+    FROM +python-dev-requirements
+    WORKDIR /usr/src/app
+    COPY scripts .
+    COPY siobrultech_protocols .
+    COPY tests .
+    RUN black . --check --diff --color
+
 pre-commit-validate:
     # renovate: datasource=pypi depName=pre-commit
     ARG PRE_COMMIT_VERSION=3.2.2
@@ -48,6 +56,7 @@ renovate-validate:
     RUN renovate-config-validator
 
 lint:
+    BUILD +black-validate
     BUILD +pre-commit-validate
     BUILD +pyright-validate
     BUILD +renovate-validate
