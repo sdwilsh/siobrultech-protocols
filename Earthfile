@@ -7,12 +7,15 @@ ARG PYTHON_VERSION=3.11
 python-requirements:
     FROM python:$PYTHON_VERSION
     WORKDIR /usr/src/app
-    COPY . .
+    COPY requirements.txt .
+    COPY setup.cfg .
+    COPY setup.py .
     RUN pip install --no-cache-dir -r requirements.txt
 
 python-dev-requirements:
     FROM +python-requirements
     WORKDIR /usr/src/app
+    COPY requirements-dev.txt .
     RUN pip install --no-cache-dir -r requirements-dev.txt
 
 pre-commit-validate:
@@ -21,6 +24,7 @@ pre-commit-validate:
     FROM +python-requirements
     WORKDIR /usr/src/app
     RUN pip install --no-cache-dir pre-commit==$PRE_COMMIT_VERSION
+    COPY . .
     RUN pre-commit run --all-files --show-diff-on-failure
 
 pyright-validate:
@@ -29,6 +33,10 @@ pyright-validate:
     FROM +python-dev-requirements
     WORKDIR /usr/src/app
     RUN pip install --no-cache-dir pyright==$PYRIGHT_VERSION
+    COPY pyproject.toml .
+    COPY scripts .
+    COPY siobrultech_protocols .
+    COPY tests .
     RUN pyright
 
 renovate-validate:
