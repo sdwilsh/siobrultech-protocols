@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import struct
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import Any, AsyncIterator, Callable, Coroutine, Generic, Optional
@@ -63,9 +64,47 @@ class NewlineTerminatedStringResponseParser(Generic[R]):
         return self._parser(arg)
 
 
+def parse_ecm_serial_number_from_settings(binary: bytes) -> int | None:
+    """
+    Unlike GEM, ECM-1240 doesn't have a specific get-serial-number API. Instead,
+    it returns the serial number as part of the device settings response.  This
+    parser understands enough of that format to extract the serial number from
+    the device settings.
+    """
+    ECM_SETTINGS_STRUCT_LENGTH = 32
+    ECM_SETTINGS_CHECKSUM_SIZE = 1
+    ECM_SETTINGS_RESPONSE_LENGTH = (
+        ECM_SETTINGS_STRUCT_LENGTH + ECM_SETTINGS_CHECKSUM_SIZE
+    )
+    BITS_PER_BYTE = 8
+    ECM_SETTINGS_CHECKSUM_MODULUS = 1 << (ECM_SETTINGS_CHECKSUM_SIZE * BITS_PER_BYTE)
+    if len(binary) < ECM_SETTINGS_RESPONSE_LENGTH:
+        return None
+
+    # Unpacking just what we need from the settings struct
+    # device_id - the device ID code
+    # serial_number - the serial number
+    # zero - a byte whose value is supposed to be 0 (just for correctness checking)
+    #
+    [device_id, serial_number, zero, checksum] = struct.unpack_from(
+        ">10xBH18xBB", binary, 0
+    )
+    actual_sum = (
+        sum(binary[:ECM_SETTINGS_STRUCT_LENGTH]) % ECM_SETTINGS_CHECKSUM_MODULUS
+    )
+    if zero != 0 or actual_sum != checksum:
+        raise ValueError()
+
+    # Following the GEM convention of just slamming device ID together with serial number
+    # to get what the user considers the serial number.
+    return int(f"{device_id}{serial_number:05}")
+
+
 GET_SERIAL_NUMBER = ApiCall[None, int](
-    formatter=lambda _: CMD_GET_SERIAL_NUMBER,
-    parser=NewlineTerminatedStringResponseParser(lambda response: int(response)),
+    gem_formatter=lambda _: CMD_GET_SERIAL_NUMBER,
+    gem_parser=NewlineTerminatedStringResponseParser(lambda response: int(response)),
+    ecm_formatter=lambda _: [b"\xfc", b"SET", b"RCV"],
+    ecm_parser=parse_ecm_serial_number_from_settings,
 )
 
 
@@ -77,28 +116,36 @@ async def get_serial_number(
 
 
 SET_DATE_AND_TIME = ApiCall[datetime, bool](
-    formatter=lambda dt: f"{CMD_SET_DATE_AND_TIME}{dt.strftime('%y,%m,%d,%H,%M,%S')}\r",
-    parser=NewlineTerminatedStringResponseParser(
+    gem_formatter=lambda dt: f"{CMD_SET_DATE_AND_TIME}{dt.strftime('%y,%m,%d,%H,%M,%S')}\r",
+    gem_parser=NewlineTerminatedStringResponseParser(
         lambda response: response == "DTM\r\n"
     ),
+    ecm_formatter=None,
+    ecm_parser=None,
 )
 SET_PACKET_FORMAT = ApiCall[int, bool](
-    formatter=lambda pf: f"{CMD_SET_PACKET_FORMAT}{pf:02}",
-    parser=NewlineTerminatedStringResponseParser(
+    gem_formatter=lambda pf: f"{CMD_SET_PACKET_FORMAT}{pf:02}",
+    gem_parser=NewlineTerminatedStringResponseParser(
         lambda response: response == "PKT\r\n"
     ),
+    ecm_formatter=None,
+    ecm_parser=None,
 )
 SET_PACKET_SEND_INTERVAL = ApiCall[int, bool](
-    formatter=lambda si: f"{CMD_SET_PACKET_SEND_INTERVAL}{si:03}",
-    parser=NewlineTerminatedStringResponseParser(
+    gem_formatter=lambda si: f"{CMD_SET_PACKET_SEND_INTERVAL}{si:03}",
+    gem_parser=NewlineTerminatedStringResponseParser(
         lambda response: response == "IVL\r\n"
     ),
+    ecm_formatter=lambda si: [b"\xfc", b"SET", b"IV2", bytes([si])],
+    ecm_parser=None,
 )
 SET_SECONDARY_PACKET_FORMAT = ApiCall[int, bool](
-    formatter=lambda pf: f"{CMD_SET_SECONDARY_PACKET_FORMAT}{pf:02}",
-    parser=NewlineTerminatedStringResponseParser(
+    gem_formatter=lambda pf: f"{CMD_SET_SECONDARY_PACKET_FORMAT}{pf:02}",
+    gem_parser=NewlineTerminatedStringResponseParser(
         lambda response: response == "PKF\r\n"
     ),
+    ecm_formatter=None,
+    ecm_parser=None,
 )
 
 
