@@ -201,7 +201,7 @@ class TestApi(IsolatedAsyncioTestCase):
             self.assertEqual(
                 self._transport.writes,
                 [b"\xfc"],
-                f"ECM API calls with a response should be acked by the caller",
+                "ECM API calls with a response should be acked by the caller",
             )
 
 

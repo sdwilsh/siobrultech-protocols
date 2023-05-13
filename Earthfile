@@ -18,18 +18,17 @@ python-dev-requirements:
     COPY requirements-dev.txt .
     RUN pip install --no-cache-dir -r requirements-dev.txt
 
-pre-commit-validate:
-    # renovate: datasource=pypi depName=pre-commit
-    ARG PRE_COMMIT_VERSION=3.2.2
-    FROM +python-requirements
+black-validate:
+    FROM +python-dev-requirements
     WORKDIR /usr/src/app
-    RUN pip install --no-cache-dir pre-commit==$PRE_COMMIT_VERSION
-    COPY . .
-    RUN pre-commit run --all-files --show-diff-on-failure
+    COPY scripts .
+    COPY siobrultech_protocols .
+    COPY tests .
+    RUN black . --check --diff --color
 
 pyright-validate:
     # renovate: datasource=pypi depName=pyright
-    ARG PYRIGHT_VERSION=1.1.302
+    ARG PYRIGHT_VERSION=1.1.308
     FROM +python-dev-requirements
     WORKDIR /usr/src/app
     RUN pip install --no-cache-dir pyright==$PYRIGHT_VERSION
@@ -47,7 +46,17 @@ renovate-validate:
     COPY renovate.json .
     RUN renovate-config-validator
 
+ruff-validate:
+    FROM +python-dev-requirements
+    WORKDIR /usr/src/app
+    COPY pyproject.toml .
+    COPY scripts .
+    COPY siobrultech_protocols .
+    COPY tests .
+    RUN ruff check . --diff
+
 lint:
-    BUILD +pre-commit-validate
+    BUILD +black-validate
     BUILD +pyright-validate
     BUILD +renovate-validate
+    BUILD +ruff-validate

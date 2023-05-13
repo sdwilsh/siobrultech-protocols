@@ -544,5 +544,5 @@ class BidirectionalProtocol(PacketProtocol):
         if not isinstance(expected_state, set):
             expected_state = {expected_state}
         assert len(expected_state) > 0
-        if not self._state in expected_state:
+        if self._state not in expected_state:
             raise ProtocolStateException(actual=self._state, expected=expected_state)

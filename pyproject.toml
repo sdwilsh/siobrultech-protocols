@@ -2,10 +2,6 @@
 requires = ["setuptools >= 40.6.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[tool.isort]
-profile = "black"
-src_paths = ["scripts", "siobrultech_protocols", "tests"]
-
 [tool.pyright]
 include = [
     "siobrultech_protocols",
@@ -33,3 +29,17 @@ reportUnusedFunction = "error"
 reportUnusedImport = "error"
 reportUnusedVariable = "error"
 typeCheckingMode = "basic"
+
+[tool.ruff]
+select = [
+    # Pycodestyle
+    "E",
+    # Pyflakes
+    "F",
+    # isort
+    "I001",
+]
+ignore = [
+    # Rely on Black to handle line length
+    "E501",
+]
