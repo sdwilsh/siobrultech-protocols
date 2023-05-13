@@ -32,6 +32,8 @@ typeCheckingMode = "basic"
 
 [tool.ruff]
 select = [
+    # Pycodestyle
+    "E",
     # Pyflakes
     "F",
     # isort
