@@ -51,7 +51,7 @@ queue.task_done()
 
 ### Receiving data packets AND sending API commands
 
-If you want to send API commands as well, use a `BidirectionalProtocol` instead of a `PacketProtocol`, and keep track of the protocol instance for each active connection. Then given the `protocol` instance for a given connection, do the API call as follows:
+If you want to send API commands as well, use a `BidirectionalProtocol` instead of a `PacketProtocol`. Then given the `protocol` instance for a given connection, do the API call as follows:
 
 ```python
 from siobrultech_protocols.gem.api import get_serial_number
@@ -59,25 +59,27 @@ from siobrultech_protocols.gem.api import get_serial_number
 serial = await get_serial_number(protocol)
 ```
 
+`siobrultech_protocols` provides direct support for a small set of API calls. Some of these calls work for both GEM and ECM monitors, others are GEM-only.
+
 #### Methods to Get Information from a Device
 
-| Method              | Description                              |
-| ------------------- | ---------------------------------------- |
-| `get_serial_number` | Obtains the serial number of the device. |
+| Method              | GEM | ECM | Description                              |
+| ------------------- | --- | --- | ---------------------------------------- |
+| `get_serial_number` |  ✅︎  |  ✅︎ | Obtains the serial number of the device. |
 
 #### Methods to Setup a Device
 
-| Method                        | Description                                                                 |
-| ----------------------------- | --------------------------------------------------------------------------- |
-| `set_date_and_time`           | Sets the GEM's clock to the specified `datetime`.                           |
-| `set_packet_format`           | Sets the GEM's packet format to the specified `PacketFormatType`.           |
-| `set_packet_send_interval`    | Sets the frequency (seconds) that the GEM should send packets.              |
-| `set_secondary_packet_format` | Sets the GEM's secondary packet format to the specified `PacketFormatType`. |
-| `synchronize_time`            | Synchronizes the GEM's clock to the time of the local device.               |
+| Method                        | GEM | ECM | Description                                                                 |
+| ----------------------------- | --- | --- | --------------------------------------------------------------------------- |
+| `set_date_and_time`           |  ✅︎  |  ❌  | Sets the GEM's clock to the specified `datetime`.                           |
+| `set_packet_format`           |  ✅︎  |  ❌  | Sets the GEM's packet format to the specified `PacketFormatType`.           |
+| `set_packet_send_interval`    |  ✅︎  |  ✅︎  | Sets the frequency (seconds) that the monitor should send packets.              |
+| `set_secondary_packet_format` |  ✅︎  |  ❌  | Sets the GEM's secondary packet format to the specified `PacketFormatType`. |
+| `synchronize_time`            |  ✅︎  |  ❌  | Synchronizes the GEM's clock to the time of the local device.               |
 
 ### Calling API endpoints that aren't supported by this library
 
-The API support in `siobrultech_protocols` is in its infancy. If you want to call an API endpoint for which this library doesn't provide a helper, you can make your own. For example, the following outline could be filled in to support the "get all settings" endpoint; you would use `GET_ALL_SETTINGS`:
+`siobrultech_protocols` has built-in support for just a tiny subset of the full API exposed by GEM and ECM. If you want to call an API endpoint for which this library doesn't provide a helper, you can make your own. For example, the following outline could be filled in to support the "get all settings" endpoint; you could define `GET_ALL_SETTINGS`:
 
 ```python
 from siobrultech_protocols.gem import api
@@ -85,13 +87,22 @@ from siobrultech_protocols.gem import api
 # Define a Python data type for the response. It can be whatever you want; a simple Dict, a custom dataclass, etc.
 AllSettings = Dict[str, Any]
 
-def _parse_all_settings(response: str) -> AllSettings:
-    # Here you would parse the response into the python type you defined above
+def _parse_all_gem_settings(response: str) -> AllSettings:
+    # Here you would parse the GEM response into the python type you defined above
+
+def _parse_all_ecm_settings(response: bytes) -> AllSettings:
+    # Here you would parse the ECM response into the python type you defined above
 
 GET_ALL_SETTINGS = api.ApiCall[None, AllSettings](
-    formatter=lambda _: "^^^RQSALL", parser=_parse_all_settings
+    gem_formatter=lambda _: "^^^RQSALL", gem_parser=_parse_all_gem_settings,
+    ecm_formatter=lambda _: [b"\xfc", b"SET", b"RCV"], ecm_parser=_parse_all_ecm_settings,
 )
+```
 
+Given an `ApiCall` (whether one of those in `siobrultech_protocols.api` or defined yourself as above), you can
+make the request by working with the protocol directly as follows:
+
+```python
 # Start the API request; do this once for each API call. Each protocol instance can only support one
 # API call at a time.
 delay = protocol.begin_api_request()
@@ -111,16 +122,6 @@ Alternatively, we also provide a context wrapper that works with `asyncio` as we
 ```python
 from siobrultech_protocols.gem import api
 
-# Define a Python data type for the response. It can be whatever you want; a simple Dict, a custom dataclass, etc.
-AllSettings = Dict[str, Any]
-
-def _parse_all_settings(response: str) -> AllSettings:
-    # Here you would parse the response into the python type you defined above
-
-GET_ALL_SETTINGS = api.ApiCall[None, AllSettings](
-    formatter=lambda _: "^^^RQSALL", parser=_parse_all_settings
-)
-
 async with api.call_api(GET_ALL_SETTINGS, protocol) as f:
     settings = await f(None)
 ```
@@ -129,7 +130,7 @@ Take a look at some usage examples from [libraries that use this](https://github
 
 ### Calling API endpoints when multiple devices share a connection
 
-All of the API helper methods take an optional `serial_number` parameter to target a specific device if there are multiple devices on the same connection.
+All of the API helper methods take an optional `serial_number` parameter to target a specific device if there are multiple devices on the same connection. This has no effect for ECM devices.
 
 ## Development
 
@@ -144,11 +145,12 @@ pip install -r requirements.txt
 
 # Install Dev Requirements
 pip install -r requirements-dev.txt
-
-# One-Time Install of Commit Hooks
-pre-commit install
 ```
 
 ### Testing
 
 Tests are run with `pytest`.
+
+### Linting
+
+Lint can be run with [Earthly](https://earthly.dev/) with `./earthly.sh +lint`
