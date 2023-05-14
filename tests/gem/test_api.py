@@ -227,6 +227,15 @@ class TestContextManager(IsolatedAsyncioTestCase):
             response = await f(None)
             self.assertEqual(response, "RESPONSE")
 
+    async def testApiCallWithSerialNumber(self):
+        call = ApiCall(lambda _: "^^^REQUEST", lambda response: response, None, None)
+        async with call_api(call, self._protocol, serial_number=1234567) as f:
+            self.setApiResponse("RESPONSE".encode())
+            response = await f(None)
+            self.assertEqual(response, "RESPONSE")
+
+        self.assertEqual(self._transport.writes, [b"^^^SYSPDL", b"^^^NMB34567REQUEST"])
+
     async def testTaskCanceled(self):
         call = ApiCall(lambda _: "REQUEST", lambda response: response, None, None)
         with self.assertRaises(asyncio.CancelledError):

@@ -32,7 +32,7 @@ async def call_api(
 
     async def send(arg: T) -> R:
         future = asyncio.get_event_loop().create_future()
-        protocol.invoke_api(api, arg, future)
+        protocol.invoke_api(api, arg, future, serial_number)
         return await asyncio.wait_for(future, timeout=timeout.total_seconds())
 
     delay = protocol.begin_api_request()
