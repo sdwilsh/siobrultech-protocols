@@ -6,7 +6,13 @@ import subprocess
 from packaging.version import Version
 
 CONFIG_FILE = os.path.join(
-    os.path.dirname(os.path.realpath(__file__)), "..", "setup.cfg"
+    subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip(),
+    "setup.cfg",
 )
 
 
@@ -169,16 +175,19 @@ v{release_version.major}.{release_version.minor} branch has been cut.""",
 
 
 if __name__ == "__main__":
-    parser = init_argparse()
-    args = parser.parse_args()
-    if not has_clean_git_status(args.ignore_untracked_files):
-        print("`git status` shows untracked files!")
-        exit(1)
-    checkout_main_branch()
-    current_version = get_current_version()
-    release_version = get_release_version(current_version)
-    next_version = get_next_version(current_version)
-    cut_release_branch(release_version, args.verbose)
-    assert has_clean_git_status(args.ignore_untracked_files)
-    update_main_branch(next_version, release_version, args.verbose)
-    assert has_clean_git_status(args.ignore_untracked_files)
+    try:
+        parser = init_argparse()
+        args = parser.parse_args()
+        if not has_clean_git_status(args.ignore_untracked_files):
+            print("`git status` shows untracked files!")
+            exit(1)
+        checkout_main_branch()
+        current_version = get_current_version()
+        release_version = get_release_version(current_version)
+        next_version = get_next_version(current_version)
+        cut_release_branch(release_version, args.verbose)
+        assert has_clean_git_status(args.ignore_untracked_files)
+        update_main_branch(next_version, release_version, args.verbose)
+        assert has_clean_git_status(args.ignore_untracked_files)
+    except subprocess.CalledProcessError as e:
+        print(f"Command failed: {e.cmd}\nstderr: {e.stderr.decode()}")
