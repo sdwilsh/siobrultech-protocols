@@ -34,6 +34,14 @@ class Field(ABC):
     def read(self, buffer: bytes, offset: int) -> Any:
         """Convert the buffer at the given offset to the proper value."""
 
+    @abstractmethod
+    def write(self, value: Any, buffer: bytearray) -> None:
+        """Write the given value to the given buffer."""
+
+    def write_padding(self, buffer: bytearray) -> None:
+        """Writes a dummy value whose size matches this field's size."""
+        buffer.extend([0xFE] * self.size)
+
 
 class ByteField(Field):
     def __init__(self):
@@ -42,10 +50,16 @@ class ByteField(Field):
     def read(self, buffer: bytes, offset: int) -> bytes:
         return buffer[offset : offset + self.size]
 
+    def write(self, value: int, buffer: bytearray) -> None:
+        buffer.append(value)
+
 
 class BytesField(Field):
     def read(self, buffer: bytes, offset: int) -> bytes:
         return buffer[offset : offset + self.size]
+
+    def write(self, value: bytes, buffer: bytearray) -> None:
+        buffer.extend(value)
 
 
 class NumericField(Field):
@@ -56,6 +70,11 @@ class NumericField(Field):
 
     def read(self, buffer: bytes, offset: int) -> int:
         return _parse(buffer[offset : offset + self.size], self.order, self.signed)
+
+    def write(self, value: int, buffer: bytearray) -> None:
+        temp = bytearray(self.size)
+        _format(value, self.order, self.signed, temp)
+        buffer.extend(temp)
 
     @property
     def max(self) -> int:
@@ -76,6 +95,10 @@ class FloatingPointField(Field):
     def read(self, buffer: bytes, offset: int) -> float:
         return self.raw_field.read(buffer, offset) / self.divisor
 
+    def write(self, value: float, buffer: bytearray) -> None:
+        int_value = round(value * self.divisor)
+        self.raw_field.write(int_value, buffer)
+
 
 class DateTimeField(Field):
     def __init__(self):
@@ -84,6 +107,18 @@ class DateTimeField(Field):
     def read(self, buffer: bytes, offset: int) -> datetime:
         year, month, day, hour, minute, second = buffer[offset : offset + self.size]
         return datetime(2000 + year, month, day, hour, minute, second)
+
+    def write(self, value: datetime, buffer: bytearray) -> None:
+        buffer.extend(
+            [
+                value.year - 2000,
+                value.month,
+                value.day,
+                value.hour,
+                value.minute,
+                value.second,
+            ]
+        )
 
 
 class ArrayField(Field):
@@ -97,6 +132,10 @@ class ArrayField(Field):
             self.elem_field.read(buffer, offset + i * self.elem_field.size)
             for i in range(self.num_elems)
         ]
+
+    def write(self, value: List[Any], buffer: bytearray) -> None:
+        for item in value[0 : self.num_elems]:
+            self.elem_field.write(item, buffer)
 
 
 class FloatingPointArrayField(ArrayField):
@@ -120,6 +159,9 @@ class FloatingPointArrayField(ArrayField):
     def read(self, buffer: bytes, offset: int) -> List[float]:
         return super().read(buffer, offset)
 
+    def write(self, value: List[float], buffer: bytearray) -> None:
+        super().write(value, buffer)
+
 
 class NumericArrayField(ArrayField):
     elem_field: NumericField
@@ -132,6 +174,9 @@ class NumericArrayField(ArrayField):
 
     def read(self, buffer: bytes, offset: int) -> List[int]:
         return super().read(buffer, offset)
+
+    def write(self, value: List[int], buffer: bytearray) -> None:
+        super().write(value, buffer)
 
     @property
     def max(self) -> int:
@@ -164,3 +209,22 @@ def _parse(
     for octet in octets:
         result = (result << 8) + octet
     return sign * result
+
+
+def _format(value: int, order: ByteOrder, signed: Sign, buffer: bytearray) -> None:
+    """Writes the given value to the buffer with the given byte order and signed-ness."""
+
+    sign = 1
+    if signed == Sign.Signed and value < 0:
+        value = -value
+        sign = -1
+
+    index = 0 if order == ByteOrder.LoToHi else -1
+
+    while value > 0:
+        buffer[index] = value & 0xFF
+        index += 1 if order == ByteOrder.LoToHi else -1
+        value = value >> 8
+
+    if sign == -1:
+        buffer[0 if order == ByteOrder.HiToLo else -1] |= 0x80
