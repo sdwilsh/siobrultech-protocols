@@ -271,6 +271,26 @@ class PacketFormat(object):
 
         return Packet(**args)  # type: ignore
 
+    def format(self, packet: Packet) -> bytes:
+        result = bytearray()
+        for key, field in self.fields.items():
+            value = getattr(packet, key) if hasattr(packet, key) else None
+            match key:
+                case "footer":
+                    value = 0xFFFE
+                case "header":
+                    value = 0xFEFF00 + self.type
+
+            if value is not None:
+                field.write(value, result)
+            else:
+                field.write_padding(result)
+
+        result[-1] = _compute_checksum(result, self.size)
+        assert len(result) == self.size
+
+        return bytes(result)
+
 
 class ECMPacketFormat(PacketFormat):
     def __init__(
@@ -360,11 +380,16 @@ class GEMPacketFormat(PacketFormat):
         self.fields["checksum"] = ByteField()
 
 
-def _checksum(packet: bytes, size: int):
+def _compute_checksum(packet: bytes, size: int) -> int:
     checksum = 0
     for i in packet[: size - 1]:
         checksum += i
     checksum = checksum % 256
+    return checksum
+
+
+def _checksum(packet: bytes, size: int) -> None:
+    checksum = _compute_checksum(packet, size)
     if checksum != packet[size - 1]:
         raise MalformedPacketException(
             "bad checksum for packet: {0}".format(codecs.encode(packet[:size], "hex"))
