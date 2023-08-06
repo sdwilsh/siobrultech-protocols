@@ -230,10 +230,12 @@ class PacketFormat(object):
         self,
         name: str,
         type: PacketFormatType,
+        code: int,
         num_channels: int,
     ):
         self.name: str = name
         self.type: PacketFormatType = type
+        self.code = code
         self.num_channels: int = num_channels
         self.fields: OrderedDict[str, Field] = OrderedDict()
 
@@ -262,6 +264,13 @@ class PacketFormat(object):
             args[key] = value.read(packet, offset)
             offset += value.size
 
+        if args["code"] != self.code:
+            raise MalformedPacketException(
+                "bad code {0} im packet: {1}".format(
+                    args["code"], codecs.encode(packet, "hex")
+                )
+            )
+
         if args["footer"] != 0xFFFE:
             raise MalformedPacketException(
                 "bad footer {0} in packet: {1}".format(
@@ -271,17 +280,41 @@ class PacketFormat(object):
 
         return Packet(**args)  # type: ignore
 
+    def format(self, packet: Packet) -> bytes:
+        result = bytearray()
+        for key, field in self.fields.items():
+            if key == "footer":
+                value = 0xFFFE
+            elif key == "header":
+                value = 0xFEFF
+            elif key == "code":
+                value = self.code
+            else:
+                value = getattr(packet, key) if hasattr(packet, key) else None
+
+            if value is not None:
+                field.write(value, result)
+            else:
+                field.write_padding(result)
+
+        result[-1] = _compute_checksum(result, self.size)
+        assert len(result) == self.size
+
+        return bytes(result)
+
 
 class ECMPacketFormat(PacketFormat):
     def __init__(
         self,
         name: str,
         type: PacketFormatType,
+        code: int,
         has_aux_channels: bool = False,
     ):
-        super().__init__(name, type, 2)
+        super().__init__(name, type, code=code, num_channels=2)
 
-        self.fields["header"] = NumericField(3, ByteOrder.HiToLo, Sign.Unsigned)
+        self.fields["header"] = NumericField(2, ByteOrder.HiToLo, Sign.Unsigned)
+        self.fields["code"] = NumericField(1, ByteOrder.HiToLo, Sign.Unsigned)
         self.fields["voltage"] = FloatingPointField(
             2, ByteOrder.HiToLo, Sign.Unsigned, 10.0
         )
@@ -318,13 +351,15 @@ class GEMPacketFormat(PacketFormat):
         self,
         name: str,
         type: PacketFormatType,
+        code: int,
         num_channels: int,
         has_net_metering: bool = False,
         has_time_stamp: bool = False,
     ):
-        super().__init__(name, type, num_channels)
+        super().__init__(name, type, code=code, num_channels=num_channels)
 
-        self.fields["header"] = NumericField(3, ByteOrder.HiToLo, Sign.Unsigned)
+        self.fields["header"] = NumericField(2, ByteOrder.HiToLo, Sign.Unsigned)
+        self.fields["code"] = NumericField(1, ByteOrder.HiToLo, Sign.Unsigned)
         self.fields["voltage"] = FloatingPointField(
             2, ByteOrder.HiToLo, Sign.Unsigned, 10.0
         )
@@ -360,11 +395,16 @@ class GEMPacketFormat(PacketFormat):
         self.fields["checksum"] = ByteField()
 
 
-def _checksum(packet: bytes, size: int):
+def _compute_checksum(packet: bytes, size: int) -> int:
     checksum = 0
     for i in packet[: size - 1]:
         checksum += i
     checksum = checksum % 256
+    return checksum
+
+
+def _checksum(packet: bytes, size: int) -> None:
+    checksum = _compute_checksum(packet, size)
     if checksum != packet[size - 1]:
         raise MalformedPacketException(
             "bad checksum for packet: {0}".format(codecs.encode(packet[:size], "hex"))
@@ -374,6 +414,7 @@ def _checksum(packet: bytes, size: int):
 BIN48_NET_TIME = GEMPacketFormat(
     name="BIN48-NET-TIME",
     type=PacketFormatType.BIN48_NET_TIME,
+    code=5,
     num_channels=48,
     has_net_metering=True,
     has_time_stamp=True,
@@ -382,6 +423,7 @@ BIN48_NET_TIME = GEMPacketFormat(
 BIN48_NET = GEMPacketFormat(
     name="BIN48-NET",
     type=PacketFormatType.BIN48_NET,
+    code=5,
     num_channels=48,
     has_net_metering=True,
     has_time_stamp=False,
@@ -390,6 +432,7 @@ BIN48_NET = GEMPacketFormat(
 BIN48_ABS = GEMPacketFormat(
     name="BIN48-ABS",
     type=PacketFormatType.BIN48_ABS,
+    code=6,
     num_channels=48,
     has_net_metering=False,
     has_time_stamp=False,
@@ -398,6 +441,7 @@ BIN48_ABS = GEMPacketFormat(
 BIN32_NET = GEMPacketFormat(
     name="BIN32-NET",
     type=PacketFormatType.BIN32_NET,
+    code=7,
     num_channels=32,
     has_net_metering=True,
     has_time_stamp=False,
@@ -406,15 +450,16 @@ BIN32_NET = GEMPacketFormat(
 BIN32_ABS = GEMPacketFormat(
     name="BIN32-ABS",
     type=PacketFormatType.BIN32_ABS,
+    code=8,
     num_channels=32,
     has_net_metering=False,
     has_time_stamp=False,
 )
 
 ECM_1240 = ECMPacketFormat(
-    name="ECM-1240", type=PacketFormatType.ECM_1240, has_aux_channels=True
+    name="ECM-1240", type=PacketFormatType.ECM_1240, code=3, has_aux_channels=True
 )
 
 ECM_1220 = ECMPacketFormat(
-    name="ECM-1220", type=PacketFormatType.ECM_1220, has_aux_channels=False
+    name="ECM-1220", type=PacketFormatType.ECM_1220, code=1, has_aux_channels=False
 )
