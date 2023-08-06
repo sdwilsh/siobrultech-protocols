@@ -283,15 +283,14 @@ class PacketFormat(object):
     def format(self, packet: Packet) -> bytes:
         result = bytearray()
         for key, field in self.fields.items():
-            match key:
-                case "footer":
-                    value = 0xFFFE
-                case "header":
-                    value = 0xFEFF
-                case "code":
-                    value = self.code
-                case _:
-                    value = getattr(packet, key) if hasattr(packet, key) else None
+            if key == "footer":
+                value = 0xFFFE
+            elif key == "header":
+                value = 0xFEFF
+            elif key == "code":
+                value = self.code
+            else:
+                value = getattr(packet, key) if hasattr(packet, key) else None
 
             if value is not None:
                 field.write(value, result)
