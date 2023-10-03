@@ -2,7 +2,7 @@ VERSION 0.6
 FROM alpine
 
 # renovate: datasource=docker depName=python versioning=docker
-ARG PYTHON_VERSION=3.11
+ARG PYTHON_VERSION=3.12
 
 python-requirements:
     FROM python:$PYTHON_VERSION
