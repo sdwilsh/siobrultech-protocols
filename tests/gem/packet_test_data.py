@@ -82,7 +82,7 @@ PACKETS = {
         "seconds": 997492,
         "serial_number": 603,
         "device_id": 11,
-        "temperatures": [256, -5, 0, 0, 0, 0, 0, 0],
+        "temperatures": [None, -5, 20, 255, 0, 0, 0, 0],
         "voltage": 121.1,
     },
     "BIN32-NET.bin": {
@@ -192,7 +192,7 @@ PACKETS = {
         "seconds": 997415,
         "serial_number": 603,
         "device_id": 11,
-        "temperatures": [256, -5, 0, 0, 0, 0, 0, 0],
+        "temperatures": [None, -5, 20, 255, 0, 0, 0, 0],
         "voltage": 121.5,
     },
     "BIN48-ABS.bin": {
@@ -300,7 +300,7 @@ PACKETS = {
         "seconds": 997354,
         "serial_number": 603,
         "device_id": 11,
-        "temperatures": [256, -5, 0, 0, 0, 0, 0, 0],
+        "temperatures": [None, -5, 20, 255, 0, 0, 0, 0],
         "voltage": 121.3,
     },
     "BIN48-NET.bin": {
@@ -458,7 +458,7 @@ PACKETS = {
         "seconds": 997327,
         "serial_number": 603,
         "device_id": 11,
-        "temperatures": [256, -5, 0, 0, 0, 0, 0, 0],
+        "temperatures": [None, -5, 20, 255, 0, 0, 0, 0],
         "voltage": 121.3,
     },
     "BIN48-NET-TIME.bin": {
@@ -616,7 +616,7 @@ PACKETS = {
         "seconds": 841707,
         "serial_number": 603,
         "device_id": 11,
-        "temperatures": [256, -5, 0, 0, 0, 0, 0, 0],
+        "temperatures": [None, -5, 20, 255, 0, 0, 0, 0],
         "time_stamp": datetime.datetime(2017, 12, 20, 5, 7, 26),
         "voltage": 121.7,
     },
@@ -775,7 +775,7 @@ PACKETS = {
         "seconds": 11988815,
         "serial_number": 603,
         "device_id": 11,
-        "temperatures": [256, -5, 0, 0, 0, 0, 0, 0],
+        "temperatures": [None, -5, 20, 255, 0, 0, 0, 0],
         "time_stamp": datetime.datetime(2018, 6, 11, 21, 16, 58),
         "voltage": 122.2,
     },

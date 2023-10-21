@@ -7,6 +7,7 @@ from __future__ import annotations
 import codecs
 import json
 from collections import OrderedDict
+from copy import copy
 from datetime import datetime
 from enum import IntEnum, unique
 from typing import Any, Dict, List, Optional
@@ -39,7 +40,7 @@ class Packet(object):
         serial_number: int,
         seconds: int,
         pulse_counts: Optional[List[int]] = None,
-        temperatures: Optional[List[float]] = None,
+        temperatures: Optional[List[float | None]] = None,
         polarized_watt_seconds: Optional[List[int]] = None,
         currents: Optional[List[float]] = None,
         time_stamp: Optional[datetime] = None,
@@ -56,7 +57,7 @@ class Packet(object):
         self.serial_number: int = serial_number
         self.seconds: int = seconds
         self.pulse_counts: List[int] = pulse_counts or []
-        self.temperatures: List[float] = temperatures or []
+        self.temperatures: List[float | None] = temperatures or []
         if time_stamp:
             self.time_stamp: datetime = time_stamp
         else:
@@ -247,34 +248,34 @@ class PacketFormat(object):
 
         return result
 
-    def parse(self, packet: bytes) -> Packet:
-        if len(packet) < self.size:
+    def parse(self, data: bytes) -> Packet:
+        if len(data) < self.size:
             raise MalformedPacketException(
                 "Packet too short. Expected {0} bytes, found {1} bytes.".format(
-                    self.size, len(packet)
+                    self.size, len(data)
                 )
             )
-        _checksum(packet, self.size)
+        _checksum(data, self.size)
 
         offset = 0
         args = {
             "packet_format": self,
         }
         for key, value in self.fields.items():
-            args[key] = value.read(packet, offset)
+            args[key] = value.read(data, offset)
             offset += value.size
 
         if args["code"] != self.code:
             raise MalformedPacketException(
                 "bad code {0} im packet: {1}".format(
-                    args["code"], codecs.encode(packet, "hex")
+                    args["code"], codecs.encode(data, "hex")
                 )
             )
 
         if args["footer"] != 0xFFFE:
             raise MalformedPacketException(
                 "bad footer {0} in packet: {1}".format(
-                    hex(args["footer"]), codecs.encode(packet, "hex")  # type: ignore
+                    hex(args["footer"]), codecs.encode(data, "hex")  # type: ignore
                 )
             )
 
@@ -393,6 +394,23 @@ class GEMPacketFormat(PacketFormat):
             self.fields["time_stamp"] = DateTimeField()
         self.fields["footer"] = NumericField(2, ByteOrder.HiToLo, Sign.Unsigned)
         self.fields["checksum"] = ByteField()
+
+    def parse(self, data: bytes) -> Packet:
+        packet = super().parse(data)
+        packet.temperatures = [
+            # Above 255 means it wasn't able to read the sensor (though we sometimes also get 0 for that)
+            temperature if temperature is not None and temperature <= 255.0 else None
+            for temperature in packet.temperatures
+        ]
+        return packet
+
+    def format(self, packet: Packet) -> bytes:
+        packet = copy(packet)
+        packet.temperatures = [
+            temperature if temperature is not None else 256
+            for temperature in packet.temperatures
+        ]
+        return super().format(packet)
 
 
 def _compute_checksum(packet: bytes, size: int) -> int:
