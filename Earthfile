@@ -2,7 +2,7 @@ VERSION 0.6
 FROM alpine
 
 # renovate: datasource=docker depName=python versioning=docker
-ARG PYTHON_VERSION=3.11
+ARG PYTHON_VERSION=3.12
 
 python-requirements:
     FROM python:$PYTHON_VERSION
@@ -28,7 +28,7 @@ black-validate:
 
 pyright-validate:
     # renovate: datasource=pypi depName=pyright
-    ARG PYRIGHT_VERSION=1.1.327
+    ARG PYRIGHT_VERSION=1.1.331
     FROM +python-dev-requirements
     WORKDIR /usr/src/app
     RUN pip install --no-cache-dir pyright==$PYRIGHT_VERSION
@@ -40,7 +40,7 @@ pyright-validate:
 
 renovate-validate:
     # renovate: datasource=docker depName=renovate/renovate versioning=docker
-    ARG RENOVATE_VERSION=36
+    ARG RENOVATE_VERSION=37
     FROM renovate/renovate:$RENOVATE_VERSION
     WORKDIR /usr/src/app
     COPY renovate.json .
