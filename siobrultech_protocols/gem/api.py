@@ -185,7 +185,11 @@ async def set_packet_send_interval(
     async with call_api(
         SET_PACKET_SEND_INTERVAL, protocol, serial_number, timeout
     ) as f:
-        return await f(send_interval_seconds)
+        r = await f(send_interval_seconds)
+        # The GEM will give us a True or False response here, but the ECM has no response
+        # and returns None.  In order to keep API compatibility between the two, we assume
+        # the the ECM succeeded.
+        return r is not False
 
 
 async def set_secondary_packet_format(
