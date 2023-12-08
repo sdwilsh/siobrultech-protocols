@@ -16,6 +16,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - uses: earthly/actions-setup@v1.0.8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # renovate: datasource=docker depName=earthly/earthly
+          version: "v0.7.22"
       - uses: actions/checkout@v4
       - name: Earthly Lint
-        run: ./earthly.sh +lint
+        env:
+          EARTHLY_CI: true
+        run: earthly +lint
