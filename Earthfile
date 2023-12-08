@@ -26,12 +26,15 @@ black-validate:
     COPY --dir tests .
     RUN black . --check --diff --color
 
-pyright-validate:
-    # renovate: datasource=pypi depName=pyright
-    ARG PYRIGHT_VERSION=1.1.339
+pyright-image:
     FROM +python-dev-requirements
+    RUN nodeenv /.cache/nodeenv
+    ENV PYRIGHT_PYTHON_ENV_DIR=/.cache/nodeenv
     WORKDIR /usr/src/app
-    RUN pip install --no-cache-dir pyright==$PYRIGHT_VERSION
+
+pyright-validate:
+    FROM +pyright-image
+    WORKDIR /usr/src/app
     COPY pyproject.toml .
     COPY --dir scripts .
     COPY --dir siobrultech_protocols .
