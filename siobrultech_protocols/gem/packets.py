@@ -40,7 +40,7 @@ class Packet(object):
         serial_number: int,
         seconds: int,
         pulse_counts: Optional[List[int]] = None,
-        temperatures: Optional[List[float | None]] = None,
+        temperatures: Optional[List[Optional[float]]] = None,
         polarized_watt_seconds: Optional[List[int]] = None,
         currents: Optional[List[float]] = None,
         time_stamp: Optional[datetime] = None,
