@@ -21,9 +21,9 @@ python-dev-requirements:
 black-validate:
     FROM +python-dev-requirements
     WORKDIR /usr/src/app
-    COPY scripts .
-    COPY siobrultech_protocols .
-    COPY tests .
+    COPY --dir scripts .
+    COPY --dir siobrultech_protocols .
+    COPY --dir tests .
     RUN black . --check --diff --color
 
 pyright-validate:
@@ -33,9 +33,9 @@ pyright-validate:
     WORKDIR /usr/src/app
     RUN pip install --no-cache-dir pyright==$PYRIGHT_VERSION
     COPY pyproject.toml .
-    COPY scripts .
-    COPY siobrultech_protocols .
-    COPY tests .
+    COPY --dir scripts .
+    COPY --dir siobrultech_protocols .
+    COPY --dir tests .
     RUN pyright
 
 renovate-validate:
@@ -50,9 +50,9 @@ ruff-validate:
     FROM +python-dev-requirements
     WORKDIR /usr/src/app
     COPY pyproject.toml .
-    COPY scripts .
-    COPY siobrultech_protocols .
-    COPY tests .
+    COPY --dir scripts .
+    COPY --dir siobrultech_protocols .
+    COPY --dir tests .
     RUN ruff check . --diff
 
 lint:
