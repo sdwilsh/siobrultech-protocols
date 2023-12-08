@@ -44,22 +44,33 @@ class TestApi(IsolatedAsyncioTestCase):
         self._protocol.connection_made(self._transport)
 
     async def testApiCallWithoutResponse(self):
-        call = ApiCall(lambda _: "REQUEST", None, None, None)
-
-        await self.assertCall(call, "REQUEST", None, None, None, None)
+        await self.assertCall(
+            ApiCall(lambda _: "REQUEST", None, None, None),
+            "REQUEST",
+            None,
+            None,
+            None,
+            None,
+        )
 
     async def testApiCall(self):
-        call = ApiCall(lambda _: "REQUEST", lambda response: response, None, None)
-
         await self.assertCall(
-            call, "REQUEST", None, None, "RESPONSE".encode(), "RESPONSE"
+            ApiCall(lambda _: "REQUEST", lambda response: response, None, None),
+            "REQUEST",
+            None,
+            None,
+            "RESPONSE".encode(),
+            "RESPONSE",
         )
 
     async def testApiCallWithSerialNumber(self):
-        call = ApiCall(lambda _: "^^^REQUEST", lambda response: response, None, None)
-
         await self.assertCall(
-            call, "^^^NMB02345REQUEST", None, 1002345, "RESPONSE".encode(), "RESPONSE"
+            ApiCall(lambda _: "^^^REQUEST", lambda response: response, None, None),
+            "^^^NMB02345REQUEST",
+            None,
+            1002345,
+            "RESPONSE".encode(),
+            "RESPONSE",
         )
 
     async def testApiCallIgnored(self):
