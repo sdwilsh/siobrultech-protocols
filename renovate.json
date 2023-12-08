@@ -20,6 +20,15 @@
   },
   "regexManagers": [
     {
+      "customType": "regex",
+      "fileMatch": [
+        "^\\.github/workflows/.*\\.yml$"
+      ],
+      "matchStrings": [
+        "#\\s*renovate:\\s*datasource=(?<datasource>.*?)\\s+depName=(?<depName>.*?)\\s+(?:[a-z\\-_]+)?version:\\s+\"(?<currentValue>.*?)\""
+      ]
+    },
+    {
       "fileMatch": [
         "^Earthfile$"
       ],
