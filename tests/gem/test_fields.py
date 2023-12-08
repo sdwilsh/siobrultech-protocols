@@ -114,7 +114,7 @@ class TestFieldFormatting(unittest.TestCase):
         self.assertEqual(b"c", self._buffer)
 
     def testBytesFieldWrite(self):
-        BytesField(4).write([ord(char) for char in "cdef"], self._buffer)
+        BytesField(4).write(b"cdef", self._buffer)
         self.assertEqual(b"cdef", self._buffer)
 
     def testNumericFieldHiToLoWrite(self):
