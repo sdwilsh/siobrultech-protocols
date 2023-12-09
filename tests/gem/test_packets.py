@@ -1,5 +1,8 @@
 import functools
+import inspect
 import unittest
+
+import pytest
 
 from siobrultech_protocols.gem import packets
 from tests.gem.packet_test_data import assert_packet, read_packet
@@ -18,22 +21,28 @@ packet_maker = functools.partial(
 )
 
 
+@pytest.mark.parametrize(
+    "file_name, packet_format",
+    [
+        ["BIN32-ABS.bin", packets.BIN32_ABS],
+        ["BIN32-NET.bin", packets.BIN32_NET],
+        ["BIN48-ABS.bin", packets.BIN48_ABS],
+        ["BIN48-NET.bin", packets.BIN48_NET],
+        ["BIN48-NET-TIME.bin", packets.BIN48_NET_TIME],
+        ["ECM-1240.bin", packets.ECM_1240],
+    ],
+)  # type: ignore
+def test_simple_packet(file_name: str, packet_format: packets.PacketFormat) -> None:
+    packet = check_packet(file_name, packet_format)
+
+    # Ensure all constructor args are present in string representation of the packet.
+    for name in inspect.signature(packets.Packet).parameters:
+        if name == "kwargs":
+            continue
+        assert f'"{name}"' in str(packet)
+
+
 class TestPacketFormats(unittest.TestCase):
-    def test_bin32_abs(self):
-        check_packet("BIN32-ABS.bin", packets.BIN32_ABS)
-
-    def test_bin32_net(self):
-        check_packet("BIN32-NET.bin", packets.BIN32_NET)
-
-    def test_bin48_abs(self):
-        check_packet("BIN48-ABS.bin", packets.BIN48_ABS)
-
-    def test_bin48_net(self):
-        check_packet("BIN48-NET.bin", packets.BIN48_NET)
-
-    def test_bin48_net_time(self):
-        check_packet("BIN48-NET-TIME.bin", packets.BIN48_NET_TIME)
-
     def test_bin48_net_time_tricky(self):
         """BIN48_NET and BIN48_NET_TIME packets both have the same packet type
         code, so in order to detect the difference you must try to parse as
@@ -48,9 +57,6 @@ class TestPacketFormats(unittest.TestCase):
             pass
 
         check_packet("BIN48-NET-TIME_tricky.bin", packets.BIN48_NET_TIME)
-
-    def test_ecm_1240(self):
-        check_packet("ECM-1240.bin", packets.ECM_1240)
 
     def test_short_packet(self):
         packet = read_packet("BIN32-NET.bin")
@@ -253,7 +259,9 @@ class TestPacketAverageComputation(unittest.TestCase):
         self.assertEqual(packet_a.get_average_aux_rate_of_change(0, packet_a), 0)
 
 
-def check_packet(packet_file_name: str, packet_format: packets.PacketFormat):
+def check_packet(
+    packet_file_name: str, packet_format: packets.PacketFormat
+) -> packets.Packet:
     packet = parse_packet(packet_file_name, packet_format)
 
     assert_packet(packet_file_name, packet)
@@ -263,8 +271,12 @@ def check_packet(packet_file_name: str, packet_format: packets.PacketFormat):
 
     assert_packet(packet_file_name, reparsed_packet)
 
+    return packet
 
-def parse_packet(packet_file_name: str, packet_format: packets.PacketFormat):
+
+def parse_packet(
+    packet_file_name: str, packet_format: packets.PacketFormat
+) -> packets.Packet:
     return packet_format.parse(read_packet(packet_file_name))
 
 
