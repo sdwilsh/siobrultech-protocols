@@ -252,7 +252,9 @@ class TestPacketAverageComputation(unittest.TestCase):
         self.assertEqual(packet_a.get_average_aux_rate_of_change(0, packet_a), 0)
 
 
-def check_packet(packet_file_name: str, packet_format: packets.PacketFormat):
+def check_packet(
+    packet_file_name: str, packet_format: packets.PacketFormat
+) -> packets.Packet:
     packet = parse_packet(packet_file_name, packet_format)
 
     assert_packet(packet_file_name, packet)
@@ -261,6 +263,8 @@ def check_packet(packet_file_name: str, packet_format: packets.PacketFormat):
     reparsed_packet = packet_format.parse(raw_data)
 
     assert_packet(packet_file_name, reparsed_packet)
+
+    return packet
 
 
 def parse_packet(
