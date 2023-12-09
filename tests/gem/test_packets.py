@@ -1,4 +1,5 @@
 import functools
+import inspect
 import unittest
 
 import pytest
@@ -32,7 +33,13 @@ packet_maker = functools.partial(
     ],
 )  # type: ignore
 def test_simple_packet(file_name: str, packet_format: packets.PacketFormat) -> None:
-    check_packet(file_name, packet_format)
+    packet = check_packet(file_name, packet_format)
+
+    # Ensure all constructor args are present in string representation of the packet.
+    for name in inspect.signature(packets.Packet).parameters:
+        if name == "kwargs":
+            continue
+        assert f'"{name}"' in str(packet)
 
 
 class TestPacketFormats(unittest.TestCase):

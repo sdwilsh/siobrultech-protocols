@@ -68,16 +68,19 @@ class Packet(object):
     def __str__(self) -> str:
         return json.dumps(
             {
-                "device_id": self.device_id,
-                "serial_number": self.serial_number,
-                "seconds": self.seconds,
-                "voltage": self.voltage,
+                "aux": self.aux,
                 "absolute_watt_seconds": self.absolute_watt_seconds,
-                "polarized_watt_seconds": self.polarized_watt_seconds,
                 "currents": self.currents,
+                "dc_voltage": self.dc_voltage,
+                "device_id": self.device_id,
+                "packet_format": str(self.packet_format),
+                "polarized_watt_seconds": self.polarized_watt_seconds,
                 "pulse_counts": self.pulse_counts,
+                "seconds": self.seconds,
+                "serial_number": self.serial_number,
                 "temperatures": self.temperatures,
                 "time_stamp": self.time_stamp.isoformat(),
+                "voltage": self.voltage,
             }
         )
 
@@ -239,6 +242,16 @@ class PacketFormat(object):
         self.code = code
         self.num_channels: int = num_channels
         self.fields: OrderedDict[str, Field] = OrderedDict()
+
+    def __str__(self) -> str:
+        return json.dumps(
+            {
+                "name": self.name,
+                "type": self.type.name,
+                "code": self.code,
+                "num_channels": self.num_channels,
+            }
+        )
 
     @property
     def size(self) -> int:
