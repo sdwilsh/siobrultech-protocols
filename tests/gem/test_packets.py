@@ -263,7 +263,9 @@ def check_packet(packet_file_name: str, packet_format: packets.PacketFormat):
     assert_packet(packet_file_name, reparsed_packet)
 
 
-def parse_packet(packet_file_name: str, packet_format: packets.PacketFormat):
+def parse_packet(
+    packet_file_name: str, packet_format: packets.PacketFormat
+) -> packets.Packet:
     return packet_format.parse(read_packet(packet_file_name))
 
 
