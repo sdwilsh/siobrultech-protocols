@@ -1,6 +1,8 @@
 import functools
 import unittest
 
+import pytest
+
 from siobrultech_protocols.gem import packets
 from tests.gem.packet_test_data import assert_packet, read_packet
 
@@ -18,22 +20,22 @@ packet_maker = functools.partial(
 )
 
 
+@pytest.mark.parametrize(
+    "file_name, packet_format",
+    [
+        ["BIN32-ABS.bin", packets.BIN32_ABS],
+        ["BIN32-NET.bin", packets.BIN32_NET],
+        ["BIN48-ABS.bin", packets.BIN48_ABS],
+        ["BIN48-NET.bin", packets.BIN48_NET],
+        ["BIN48-NET-TIME.bin", packets.BIN48_NET_TIME],
+        ["ECM-1240.bin", packets.ECM_1240],
+    ],
+)  # type: ignore
+def test_simple_packet(file_name: str, packet_format: packets.PacketFormat) -> None:
+    check_packet(file_name, packet_format)
+
+
 class TestPacketFormats(unittest.TestCase):
-    def test_bin32_abs(self):
-        check_packet("BIN32-ABS.bin", packets.BIN32_ABS)
-
-    def test_bin32_net(self):
-        check_packet("BIN32-NET.bin", packets.BIN32_NET)
-
-    def test_bin48_abs(self):
-        check_packet("BIN48-ABS.bin", packets.BIN48_ABS)
-
-    def test_bin48_net(self):
-        check_packet("BIN48-NET.bin", packets.BIN48_NET)
-
-    def test_bin48_net_time(self):
-        check_packet("BIN48-NET-TIME.bin", packets.BIN48_NET_TIME)
-
     def test_bin48_net_time_tricky(self):
         """BIN48_NET and BIN48_NET_TIME packets both have the same packet type
         code, so in order to detect the difference you must try to parse as
@@ -48,9 +50,6 @@ class TestPacketFormats(unittest.TestCase):
             pass
 
         check_packet("BIN48-NET-TIME_tricky.bin", packets.BIN48_NET_TIME)
-
-    def test_ecm_1240(self):
-        check_packet("ECM-1240.bin", packets.ECM_1240)
 
     def test_short_packet(self):
         packet = read_packet("BIN32-NET.bin")
