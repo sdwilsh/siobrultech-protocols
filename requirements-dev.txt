@@ -1,5 +1,5 @@
 black==23.12.1
-pyright==1.1.368
+pyright==1.1.369
 pytest==7.4.4
 pytest-asyncio==0.23.7
 pyyaml==6.0.1
