@@ -20,7 +20,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           # renovate: datasource=docker depName=earthly/earthly
-          version: "v0.8.15"
+          version: "v0.8.16"
       - uses: actions/checkout@v4
       - name: Earthly Lint
         env:
